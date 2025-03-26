@@ -1,3 +1,4 @@
+// src/features/auth/pages/LoginPage.jsx
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../../hooks/useAuth';
 import Card from '../../../components/common/Card/Card';
@@ -40,6 +41,7 @@ const LoginPage = () => {
     setIsLoading(true);
     
     try {
+      console.log('Attempting login with:', email);
       const { success, error } = await login(email, password, remember);
       
       if (!success && error) {
@@ -124,62 +126,7 @@ const LoginPage = () => {
         </Card>
       </div>
       
-      <style jsx>{`
-        .login-page {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          min-height: 100vh;
-          background-color: var(--surface-color);
-        }
-        
-        .login-container {
-          width: 100%;
-          max-width: 400px;
-          padding: 1rem;
-        }
-        
-        .login-logo {
-          display: flex;
-          justify-content: center;
-          margin-bottom: 2rem;
-        }
-        
-        .login-logo img {
-          height: 60px;
-          width: auto;
-        }
-        
-        .login-card {
-          box-shadow: var(--shadow-lg);
-        }
-        
-        .error-message {
-          padding: 0.75rem;
-          margin-bottom: 1rem;
-          background-color: rgba(220, 53, 69, 0.1);
-          color: var(--error-color);
-          border-radius: var(--border-radius-md);
-          font-size: var(--font-size-sm);
-        }
-        
-        .remember-me {
-          display: flex;
-          margin: 1rem 0;
-        }
-        
-        .checkbox-container {
-          display: flex;
-          align-items: center;
-          cursor: pointer;
-        }
-        
-        .checkbox-text {
-          margin-left: 0.5rem;
-          font-size: var(--font-size-sm);
-          color: var(--text-secondary);
-        }
-      `}</style>
+      {/* Use regular CSS classes instead of JSX styles */}
     </div>
   );
 };

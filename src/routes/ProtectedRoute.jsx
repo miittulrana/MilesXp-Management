@@ -1,3 +1,4 @@
+// src/routes/ProtectedRoute.jsx
 import React from 'react';
 import PropTypes from 'prop-types';
 import { Navigate, useLocation } from 'react-router-dom';
@@ -17,6 +18,14 @@ const ProtectedRoute = ({
   const { user, userDetails, initialized, loading } = useAuth();
   const location = useLocation();
 
+  console.log("[PROTECTED] Route check:", { 
+    adminOnly, 
+    hasUser: !!user, 
+    loading, 
+    initialized, 
+    userRole: userDetails?.role 
+  });
+
   // Show loader while checking authentication
   if (!initialized || loading) {
     return (
@@ -28,30 +37,20 @@ const ProtectedRoute = ({
 
   // Redirect to login if not authenticated
   if (!user || !userDetails) {
+    console.log("[PROTECTED] Not authenticated, redirecting to login");
     return <Navigate to={ROUTES.LOGIN} state={{ from: location.pathname }} replace />;
   }
 
   // Check if admin access is required
   if (adminOnly && userDetails.role !== ROLES.ADMIN) {
     // Redirect to appropriate page if not an admin
+    console.log("[PROTECTED] Not an admin, redirecting to vehicles");
     return <Navigate to={ROUTES.VEHICLES} replace />;
   }
 
   // Render the protected component
-  return (
-    <>
-      {children}
-      
-      <style jsx>{`
-        .protected-route-loader {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          min-height: 100vh;
-        }
-      `}</style>
-    </>
-  );
+  console.log("[PROTECTED] Access granted");
+  return children;
 };
 
 ProtectedRoute.propTypes = {

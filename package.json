@@ -12,6 +12,7 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.39.3",
     "date-fns": "^3.3.1",
+    "dayjs": "^1.11.13",
     "jspdf": "^2.5.1",
     "jspdf-autotable": "^3.8.1",
     "mapbox-gl": "^3.0.1",

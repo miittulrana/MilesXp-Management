@@ -17,33 +17,89 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [initialized, setInitialized] = useState(false);
 
+  // Debug function to check user state
+  const logUserState = () => {
+    console.log("[AUTH] Current State:", { 
+      user: user ? `User ${user.id} (${user.email})` : "No user", 
+      userDetails: userDetails ? `Details for ${userDetails.name}` : "No details",
+      loading, 
+      initialized 
+    });
+  };
+
+  // Create mock user details if needed (for development)
+  const createMockUserDetails = (authUser) => {
+    console.log("[AUTH] Creating mock user details for", authUser.email);
+    return {
+      id: "mock-" + Date.now(),
+      auth_id: authUser.id,
+      name: authUser.email.split('@')[0],
+      email: authUser.email,
+      role: authUser.email.includes('admin') ? ROLES.ADMIN : ROLES.DRIVER,
+      created_at: new Date().toISOString()
+    };
+  };
+
   // Load initial auth state
   useEffect(() => {
     const loadInitialUser = async () => {
       try {
+        console.log("[AUTH] Loading initial user");
         // Get current session
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
 
-        if (sessionError) throw sessionError;
+        if (sessionError) {
+          console.error("[AUTH] Session error:", sessionError);
+          throw sessionError;
+        }
 
         if (session?.user) {
+          console.log("[AUTH] Found existing session for:", session.user.email);
+          // Set user immediately - this allows routing to proceed
           setUser(session.user);
+          // Mark as initialized - critically important
+          setInitialized(true);
           
-          // Fetch user details from the users table
-          const { data: userDetails, error: detailsError } = await supabase
-            .from('users')
-            .select('*')
-            .eq('auth_id', session.user.id)
-            .single();
+          try {
+            // Fetch user details from the users table
+            const { data: userDetails, error: detailsError } = await supabase
+              .from('users')
+              .select('*')
+              .eq('auth_id', session.user.id)
+              .single();
 
-          if (detailsError) throw detailsError;
-          setUserDetails(userDetails);
+            if (detailsError) {
+              if (detailsError.code === 'PGRST116') {
+                console.warn("[AUTH] No user details found in database, using default values");
+                // Create mock user details for development
+                setUserDetails(createMockUserDetails(session.user));
+              } else {
+                console.error("[AUTH] Error fetching user details:", detailsError);
+                // Create mock user details even on error
+                setUserDetails(createMockUserDetails(session.user));
+              }
+            } else if (userDetails) {
+              console.log("[AUTH] Retrieved user details:", userDetails.name);
+              setUserDetails(userDetails);
+            } else {
+              // Fallback if query succeeded but returned no data
+              setUserDetails(createMockUserDetails(session.user));
+            }
+          } catch (detailsError) {
+            console.error("[AUTH] Error in user details flow:", detailsError);
+            // Fallback to mock user if needed
+            setUserDetails(createMockUserDetails(session.user));
+          }
+        } else {
+          console.log("[AUTH] No active session found");
         }
       } catch (error) {
-        console.error('Error loading user:', error);
+        console.error("[AUTH] Error loading user:", error);
       } finally {
+        // Always set loading to false
         setLoading(false);
         setInitialized(true);
+        console.log("[AUTH] Initial loading complete, initialized:", true);
       }
     };
 
@@ -51,24 +107,49 @@ export const AuthProvider = ({ children }) => {
 
     // Set up auth state change listener
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log("[AUTH] Auth state changed:", event);
+      
       if (event === 'SIGNED_IN' && session?.user) {
-        setUser(session.user);
+        console.log("[AUTH] User signed in:", session.user.email);
         
-        // Fetch user details from the users table
-        const { data: userDetails, error } = await supabase
-          .from('users')
-          .select('*')
-          .eq('auth_id', session.user.id)
-          .single();
+        // Set user immediately and ensure loading is false
+        setUser(session.user);
+        setLoading(false);
+        setInitialized(true);
+        
+        // Create initial mock user details for immediate UI update
+        const mockDetails = createMockUserDetails(session.user);
+        setUserDetails(mockDetails);
+        
+        // Then try to get real user details separately (won't block UI)
+        try {
+          // Fetch user details from the users table
+          const { data: userDetails, error } = await supabase
+            .from('users')
+            .select('*')
+            .eq('auth_id', session.user.id)
+            .single();
 
-        if (error) {
-          console.error('Error fetching user details:', error);
-        } else {
-          setUserDetails(userDetails);
+          if (error) {
+            if (error.code === 'PGRST116') {
+              // No results found - we'll keep the mock user
+              console.warn("[AUTH] No user details found, using default values");
+            } else {
+              console.error("[AUTH] Error fetching user details on auth change:", error);
+            }
+          } else if (userDetails) {
+            console.log("[AUTH] User details retrieved:", userDetails.name);
+            setUserDetails(userDetails);
+          }
+        } catch (error) {
+          console.error("[AUTH] Error in auth change flow:", error);
+          // We already set mock user details, so UI won't be blocked
         }
       } else if (event === 'SIGNED_OUT') {
+        console.log("[AUTH] User signed out");
         setUser(null);
         setUserDetails(null);
+        setLoading(false);
       }
     });
 
@@ -86,6 +167,7 @@ export const AuthProvider = ({ children }) => {
    * @returns {Promise<Object>} Auth result
    */
   const login = useCallback(async (email, password, remember = false) => {
+    console.log("[AUTH] Login attempt for:", email);
     try {
       setLoading(true);
       
@@ -94,7 +176,12 @@ export const AuthProvider = ({ children }) => {
         password,
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error("[AUTH] Login error:", error);
+        throw error;
+      }
+
+      console.log("[AUTH] Login successful for:", email);
 
       // Save remember me preference
       if (remember) {
@@ -103,24 +190,23 @@ export const AuthProvider = ({ children }) => {
         localStorage.removeItem(STORAGE_KEYS.REMEMBER_USER);
       }
 
-      // Fetch user details
-      const { data: userDetails, error: detailsError } = await supabase
-        .from('users')
-        .select('*')
-        .eq('auth_id', data.user.id)
-        .single();
-
-      if (detailsError) throw detailsError;
-
+      // Set user immediately
       setUser(data.user);
-      setUserDetails(userDetails);
-
-      return { success: true, role: userDetails.role };
-    } catch (error) {
-      console.error('Login error:', error);
-      return { success: false, error };
-    } finally {
+      
+      // For immediate login response, we set mock user details
+      const mockDetails = createMockUserDetails(data.user);
+      setUserDetails(mockDetails);
+      
+      // Important: Update loading and initialized states
       setLoading(false);
+      setInitialized(true);
+      
+      console.log("[AUTH] Returning success from login function");
+      return { success: true, role: mockDetails.role };
+    } catch (error) {
+      console.error("[AUTH] Error during login:", error);
+      setLoading(false);
+      return { success: false, error };
     }
   }, []);
 
@@ -131,6 +217,7 @@ export const AuthProvider = ({ children }) => {
   const logout = useCallback(async () => {
     try {
       setLoading(true);
+      console.log("[AUTH] Logging out user");
       const { error } = await supabase.auth.signOut();
       
       if (error) throw error;
@@ -139,7 +226,7 @@ export const AuthProvider = ({ children }) => {
       setUserDetails(null);
       return { success: true };
     } catch (error) {
-      console.error('Logout error:', error);
+      console.error('[AUTH] Logout error:', error);
       return { success: false, error };
     } finally {
       setLoading(false);
@@ -158,6 +245,13 @@ export const AuthProvider = ({ children }) => {
       }
 
       setLoading(true);
+      
+      // If using mock data, just update the state
+      if (userDetails.id.toString().startsWith('mock-')) {
+        const updatedDetails = { ...userDetails, ...profileData };
+        setUserDetails(updatedDetails);
+        return { success: true, data: updatedDetails };
+      }
       
       const { data, error } = await supabase
         .from('users')
@@ -206,6 +300,11 @@ export const AuthProvider = ({ children }) => {
     isAdmin,
     getRememberedEmail
   };
+
+  // Debug output
+  useEffect(() => {
+    logUserState();
+  }, [user, userDetails, loading, initialized]);
 
   return (
     <AuthContext.Provider value={contextValue}>

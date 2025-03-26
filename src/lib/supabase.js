@@ -16,4 +16,9 @@ const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   }
 });
 
+// Log authentication status for debugging
+supabase.auth.onAuthStateChange((event, session) => {
+  console.log('Supabase auth state change:', event, session ? 'User logged in' : 'No session');
+});
+
 export default supabase;

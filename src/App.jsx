@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { ROUTES, ROLES } from './lib/constants';
 import AuthProvider from './context/AuthContext';
@@ -21,8 +21,32 @@ import './App.css';
 const AppRouter = () => {
   const { user, userDetails, initialized, loading } = useAuth();
   
-  // Show loader while checking authentication
-  if (!initialized || loading) {
+  useEffect(() => {
+    console.log("[ROUTER] Current router state:", { 
+      user: !!user, 
+      userDetails: !!userDetails,
+      initialized,
+      loading
+    });
+  }, [user, userDetails, initialized, loading]);
+
+  // Simplified condition - if user exists, we should show routes even if userDetails is incomplete
+  if (user) {
+    console.log("[ROUTER] User authenticated, proceeding to routes");
+    
+    // If we have userDetails, use the role to determine which routes to show
+    if (userDetails?.role === ROLES.ADMIN) {
+      console.log("[ROUTER] Rendering admin routes");
+      return <AdminRoutes />;
+    } else {
+      console.log("[ROUTER] Rendering driver routes (default)");
+      return <DriverRoutes />;
+    }
+  }
+  
+  // Only show loading if not initialized yet
+  if (!initialized) {
+    console.log("[ROUTER] App still initializing, showing loader");
     return (
       <div className="app-loader">
         <Loader size="large" text="Loading..." />
@@ -30,11 +54,8 @@ const AppRouter = () => {
     );
   }
   
-  // Determine which routes to render based on auth state and role
-  if (user && userDetails) {
-    return userDetails.role === ROLES.ADMIN ? <AdminRoutes /> : <DriverRoutes />;
-  }
-  
+  // Default to public routes
+  console.log("[ROUTER] Not authenticated, rendering public routes");
   return <PublicRoutes />;
 };
 
