@@ -1,0 +1,116 @@
+.card {
+    background-color: var(--background-color);
+    border-radius: var(--border-radius-lg);
+    box-shadow: var(--shadow-md);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    position: relative;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+  
+  .card-hoverable {
+    cursor: pointer;
+  }
+  
+  .card-hoverable:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-lg);
+  }
+  
+  .card-header {
+    padding: var(--spacing-md);
+    border-bottom: 1px solid var(--border-color);
+    background-color: var(--surface-color);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  
+  .card-title {
+    font-size: var(--font-size-lg);
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0;
+  }
+  
+  .card-header-action {
+    margin-left: var(--spacing-md);
+  }
+  
+  .card-body {
+    padding: var(--spacing-md);
+    flex: 1 1 auto;
+  }
+  
+  .card-footer {
+    padding: var(--spacing-md);
+    border-top: 1px solid var(--border-color);
+    background-color: var(--surface-color);
+  }
+  
+  /* Card variations */
+  .card-primary {
+    border-top: 4px solid var(--primary-color);
+  }
+  
+  .card-secondary {
+    border-top: 4px solid var(--secondary-color);
+  }
+  
+  .card-success {
+    border-top: 4px solid var(--success-color);
+  }
+  
+  .card-warning {
+    border-top: 4px solid var(--warning-color);
+  }
+  
+  .card-error {
+    border-top: 4px solid var(--error-color);
+  }
+  
+  .card-info {
+    border-top: 4px solid var(--info-color);
+  }
+  
+  /* Card content styling */
+  .card-body p:last-child {
+    margin-bottom: 0;
+  }
+  
+  .card-body h1:first-child,
+  .card-body h2:first-child,
+  .card-body h3:first-child,
+  .card-body h4:first-child,
+  .card-body h5:first-child,
+  .card-body h6:first-child {
+    margin-top: 0;
+  }
+  
+  /* Card layout utilities */
+  .card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: var(--spacing-md);
+  }
+  
+  /* Card with action button styling */
+  .card-with-actions .card-body {
+    padding-bottom: 0;
+  }
+  
+  /* Responsive adjustments */
+  @media (max-width: 768px) {
+    .card-header {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+    
+    .card-header-action {
+      margin-left: 0;
+      margin-top: var(--spacing-sm);
+      align-self: flex-end;
+    }
+  }

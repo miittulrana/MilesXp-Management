@@ -1,0 +1,274 @@
+.datatable-container {
+    width: 100%;
+    overflow: hidden;
+    background-color: var(--background-color);
+    border-radius: var(--border-radius-lg);
+    box-shadow: var(--shadow-md);
+  }
+  
+  /* Controls */
+  .datatable-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--spacing-md);
+    background-color: var(--surface-color);
+    border-bottom: 1px solid var(--border-color);
+  }
+  
+  .datatable-search {
+    display: flex;
+    align-items: center;
+  }
+  
+  .datatable-search-input {
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-md);
+    font-size: var(--font-size-sm);
+    width: 250px;
+    transition: all var(--transition-normal) ease;
+  }
+  
+  .datatable-search-input:focus {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 0.2rem rgba(0, 77, 153, 0.25);
+    outline: none;
+  }
+  
+  .datatable-page-size {
+    display: flex;
+    align-items: center;
+  }
+  
+  .datatable-page-size label {
+    display: flex;
+    align-items: center;
+    font-size: var(--font-size-sm);
+    color: var(--text-secondary);
+  }
+  
+  .datatable-page-size-select {
+    margin: 0 0.5rem;
+    padding: 0.3rem 0.5rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-md);
+    font-size: var(--font-size-sm);
+    background-color: var(--background-color);
+  }
+  
+  /* Table wrapper */
+  .datatable-wrapper {
+    overflow-x: auto;
+  }
+  
+  /* Table */
+  .datatable {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--font-size-sm);
+  }
+  
+  .datatable th,
+  .datatable td {
+    padding: 0.75rem 1rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border-color);
+  }
+  
+  .datatable th {
+    font-weight: 600;
+    background-color: var(--surface-color);
+    position: sticky;
+    top: 0;
+    z-index: 1;
+  }
+  
+  /* Sortable headers */
+  .datatable-sortable-header {
+    cursor: pointer;
+    user-select: none;
+  }
+  
+  .datatable-sortable-header:hover {
+    background-color: rgba(0, 0, 0, 0.05);
+  }
+  
+  .datatable-header-content {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  
+  .datatable-sort-icon {
+    margin-left: 0.5rem;
+    font-size: 0.75rem;
+  }
+  
+  /* Row styling */
+  .datatable tbody tr {
+    transition: background-color var(--transition-fast) ease;
+  }
+  
+  .datatable tbody tr:nth-child(even) {
+    background-color: rgba(0, 0, 0, 0.02);
+  }
+  
+  .datatable tbody tr:hover {
+    background-color: rgba(0, 0, 0, 0.04);
+  }
+  
+  .datatable-clickable-row {
+    cursor: pointer;
+  }
+  
+  .datatable-row-selected {
+    background-color: rgba(0, 77, 153, 0.08) !important;
+  }
+  
+  /* Selection cell */
+  .datatable-selection-cell {
+    width: 1.5rem;
+    text-align: center;
+  }
+  
+  /* Empty state */
+  .datatable-empty-cell {
+    text-align: center;
+    padding: 2rem !important;
+    color: var(--text-secondary);
+    font-style: italic;
+  }
+  
+  /* Loading state */
+  .datatable-loading {
+    opacity: 0.7;
+    pointer-events: none;
+  }
+  
+  .datatable-loading-cell {
+    text-align: center;
+    padding: 2rem !important;
+  }
+  
+  .datatable-loader {
+    display: inline-block;
+    position: relative;
+    width: 80px;
+    height: 20px;
+  }
+  
+  .datatable-loader:after {
+    content: " ";
+    display: block;
+    border-radius: 50%;
+    width: 0;
+    height: 0;
+    margin: 8px;
+    box-sizing: border-box;
+    border: 12px solid var(--primary-color);
+    border-color: var(--primary-color) transparent var(--primary-color) transparent;
+    animation: datatable-loader 1.2s infinite;
+  }
+  
+  @keyframes datatable-loader {
+    0% {
+      transform: rotate(0);
+      animation-timing-function: cubic-bezier(0.55, 0.055, 0.675, 0.19);
+    }
+    50% {
+      transform: rotate(180deg);
+      animation-timing-function: cubic-bezier(0.215, 0.61, 0.355, 1);
+    }
+    100% {
+      transform: rotate(360deg);
+    }
+  }
+  
+  /* Pagination */
+  .datatable-pagination {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--spacing-md);
+    background-color: var(--surface-color);
+    border-top: 1px solid var(--border-color);
+    font-size: var(--font-size-sm);
+  }
+  
+  .datatable-pagination-info {
+    color: var(--text-secondary);
+  }
+  
+  .datatable-pagination-buttons {
+    display: flex;
+    align-items: center;
+  }
+  
+  .datatable-pagination-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 2rem;
+    height: 2rem;
+    margin: 0 0.25rem;
+    padding: 0 0.5rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-md);
+    background-color: var(--background-color);
+    color: var(--text-primary);
+    font-size: var(--font-size-sm);
+    cursor: pointer;
+    transition: all var(--transition-fast) ease;
+  }
+  
+  .datatable-pagination-button:hover:not(:disabled) {
+    background-color: var(--surface-color);
+    border-color: var(--text-secondary);
+  }
+  
+  .datatable-pagination-button.active {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+    color: white;
+  }
+  
+  .datatable-pagination-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  
+  .datatable-pagination-ellipsis {
+    margin: 0 0.25rem;
+  }
+  
+  /* Responsive adjustments */
+  @media (max-width: 768px) {
+    .datatable-controls {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+    
+    .datatable-search {
+      width: 100%;
+      margin-bottom: var(--spacing-sm);
+    }
+    
+    .datatable-search-input {
+      width: 100%;
+    }
+    
+    .datatable-pagination {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+    
+    .datatable-pagination-info {
+      margin-bottom: var(--spacing-sm);
+    }
+    
+    .datatable-pagination-buttons {
+      width: 100%;
+      justify-content: center;
+    }
+  }
