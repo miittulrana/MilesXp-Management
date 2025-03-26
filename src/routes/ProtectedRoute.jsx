@@ -1,4 +1,3 @@
-// src/routes/ProtectedRoute.jsx
 import React from 'react';
 import PropTypes from 'prop-types';
 import { Navigate, useLocation } from 'react-router-dom';
@@ -26,8 +25,8 @@ const ProtectedRoute = ({
     userRole: userDetails?.role 
   });
 
-  // Show loader while checking authentication
-  if (!initialized || loading) {
+  // Show loader while checking authentication, but only if not initialized
+  if (!initialized) {
     return (
       <div className="protected-route-loader">
         <Loader size="large" text="Authenticating..." />
@@ -36,16 +35,26 @@ const ProtectedRoute = ({
   }
 
   // Redirect to login if not authenticated
-  if (!user || !userDetails) {
+  if (!user) {
     console.log("[PROTECTED] Not authenticated, redirecting to login");
     return <Navigate to={ROUTES.LOGIN} state={{ from: location.pathname }} replace />;
   }
 
   // Check if admin access is required
-  if (adminOnly && userDetails.role !== ROLES.ADMIN) {
+  if (adminOnly && userDetails?.role !== ROLES.ADMIN) {
     // Redirect to appropriate page if not an admin
     console.log("[PROTECTED] Not an admin, redirecting to vehicles");
     return <Navigate to={ROUTES.VEHICLES} replace />;
+  }
+
+  // If we have a user but loading is still true, show loading indicator
+  // This prevents showing protected content before user details are loaded
+  if (loading && !userDetails) {
+    return (
+      <div className="protected-route-loader">
+        <Loader size="medium" text="Loading data..." />
+      </div>
+    );
   }
 
   // Render the protected component

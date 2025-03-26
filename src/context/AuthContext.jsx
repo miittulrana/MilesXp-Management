@@ -27,19 +27,6 @@ export const AuthProvider = ({ children }) => {
     });
   };
 
-  // Create mock user details if needed (for development)
-  const createMockUserDetails = (authUser) => {
-    console.log("[AUTH] Creating mock user details for", authUser.email);
-    return {
-      id: "mock-" + Date.now(),
-      auth_id: authUser.id,
-      name: authUser.email.split('@')[0],
-      email: authUser.email,
-      role: authUser.email.includes('admin') ? ROLES.ADMIN : ROLES.DRIVER,
-      created_at: new Date().toISOString()
-    };
-  };
-
   // Load initial auth state
   useEffect(() => {
     const loadInitialUser = async () => {
@@ -57,8 +44,6 @@ export const AuthProvider = ({ children }) => {
           console.log("[AUTH] Found existing session for:", session.user.email);
           // Set user immediately - this allows routing to proceed
           setUser(session.user);
-          // Mark as initialized - critically important
-          setInitialized(true);
           
           try {
             // Fetch user details from the users table
@@ -69,26 +54,15 @@ export const AuthProvider = ({ children }) => {
               .single();
 
             if (detailsError) {
-              if (detailsError.code === 'PGRST116') {
-                console.warn("[AUTH] No user details found in database, using default values");
-                // Create mock user details for development
-                setUserDetails(createMockUserDetails(session.user));
-              } else {
-                console.error("[AUTH] Error fetching user details:", detailsError);
-                // Create mock user details even on error
-                setUserDetails(createMockUserDetails(session.user));
-              }
+              console.error("[AUTH] Error fetching user details:", detailsError);
+              // Don't throw here - we still have a valid auth user
             } else if (userDetails) {
               console.log("[AUTH] Retrieved user details:", userDetails.name);
               setUserDetails(userDetails);
-            } else {
-              // Fallback if query succeeded but returned no data
-              setUserDetails(createMockUserDetails(session.user));
             }
           } catch (detailsError) {
             console.error("[AUTH] Error in user details flow:", detailsError);
-            // Fallback to mock user if needed
-            setUserDetails(createMockUserDetails(session.user));
+            // Continue without user details
           }
         } else {
           console.log("[AUTH] No active session found");
@@ -96,7 +70,7 @@ export const AuthProvider = ({ children }) => {
       } catch (error) {
         console.error("[AUTH] Error loading user:", error);
       } finally {
-        // Always set loading to false
+        // Always set loading to false and initialized to true
         setLoading(false);
         setInitialized(true);
         console.log("[AUTH] Initial loading complete, initialized:", true);
@@ -112,38 +86,27 @@ export const AuthProvider = ({ children }) => {
       if (event === 'SIGNED_IN' && session?.user) {
         console.log("[AUTH] User signed in:", session.user.email);
         
-        // Set user immediately and ensure loading is false
+        // Set user immediately
         setUser(session.user);
-        setLoading(false);
-        setInitialized(true);
         
-        // Create initial mock user details for immediate UI update
-        const mockDetails = createMockUserDetails(session.user);
-        setUserDetails(mockDetails);
-        
-        // Then try to get real user details separately (won't block UI)
         try {
           // Fetch user details from the users table
-          const { data: userDetails, error } = await supabase
+          const { data, error } = await supabase
             .from('users')
             .select('*')
             .eq('auth_id', session.user.id)
             .single();
 
           if (error) {
-            if (error.code === 'PGRST116') {
-              // No results found - we'll keep the mock user
-              console.warn("[AUTH] No user details found, using default values");
-            } else {
-              console.error("[AUTH] Error fetching user details on auth change:", error);
-            }
-          } else if (userDetails) {
-            console.log("[AUTH] User details retrieved:", userDetails.name);
-            setUserDetails(userDetails);
+            console.error("[AUTH] Error fetching user details on auth change:", error);
+          } else if (data) {
+            console.log("[AUTH] User details retrieved:", data.name);
+            setUserDetails(data);
           }
         } catch (error) {
           console.error("[AUTH] Error in auth change flow:", error);
-          // We already set mock user details, so UI won't be blocked
+        } finally {
+          setLoading(false);
         }
       } else if (event === 'SIGNED_OUT') {
         console.log("[AUTH] User signed out");
@@ -178,7 +141,8 @@ export const AuthProvider = ({ children }) => {
 
       if (error) {
         console.error("[AUTH] Login error:", error);
-        throw error;
+        setLoading(false);
+        return { success: false, error };
       }
 
       console.log("[AUTH] Login successful for:", email);
@@ -193,16 +157,28 @@ export const AuthProvider = ({ children }) => {
       // Set user immediately
       setUser(data.user);
       
-      // For immediate login response, we set mock user details
-      const mockDetails = createMockUserDetails(data.user);
-      setUserDetails(mockDetails);
+      try {
+        // Get user details
+        const { data: details, error: detailsError } = await supabase
+          .from('users')
+          .select('*')
+          .eq('auth_id', data.user.id)
+          .single();
+          
+        if (detailsError) {
+          console.error("[AUTH] Error fetching user details after login:", detailsError);
+        } else if (details) {
+          setUserDetails(details);
+          console.log("[AUTH] User details loaded:", details.name);
+          return { success: true, role: details.role };
+        }
+      } catch (detailsError) {
+        console.error("[AUTH] Error getting user details:", detailsError);
+      }
       
-      // Important: Update loading and initialized states
+      // Still return success even if we couldn't get details
       setLoading(false);
-      setInitialized(true);
-      
-      console.log("[AUTH] Returning success from login function");
-      return { success: true, role: mockDetails.role };
+      return { success: true };
     } catch (error) {
       console.error("[AUTH] Error during login:", error);
       setLoading(false);
@@ -245,13 +221,6 @@ export const AuthProvider = ({ children }) => {
       }
 
       setLoading(true);
-      
-      // If using mock data, just update the state
-      if (userDetails.id.toString().startsWith('mock-')) {
-        const updatedDetails = { ...userDetails, ...profileData };
-        setUserDetails(updatedDetails);
-        return { success: true, data: updatedDetails };
-      }
       
       const { data, error } = await supabase
         .from('users')
