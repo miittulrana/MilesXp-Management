@@ -6,13 +6,13 @@ import ProtectedRoute from './ProtectedRoute';
 
 // Lazy load pages to improve initial load time
 const Vehicles = React.lazy(() => import('../features/vehicles/pages/VehiclesPage'));
-const VehicleDetails = React.lazy(() => import('../features/vehicles/pages/VehicleDetailsPage'));
+const VehicleDetails = React.lazy(() => import('../features/vehicles/pages/VehicleDetailPage'));
 const Documents = React.lazy(() => import('../features/documents/pages/DocumentsPage'));
 const DocumentStatus = React.lazy(() => import('../features/documents/pages/DocumentStatusPage'));
 const ServiceDues = React.lazy(() => import('../features/service-dues/pages/ServiceDuesPage'));
-const VehicleLogs = React.lazy(() => import('../features/logs/pages/VehicleLogsPage'));
+const VehicleLogs = React.lazy(() => import('../features/logs/pages/LogsPage'));
 const Calendar = React.lazy(() => import('../features/calendar/pages/CalendarPage'));
-const VehicleTracking = React.lazy(() => import('../features/tracking/pages/VehicleTrackingPage'));
+const VehicleTracking = React.lazy(() => import('../features/tracking/pages/TrackingPage'));
 const Profile = React.lazy(() => import('../features/auth/pages/ProfilePage'));
 const NotFound = React.lazy(() => import('../features/common/pages/NotFoundPage'));
 
