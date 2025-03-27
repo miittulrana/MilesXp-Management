@@ -17,9 +17,9 @@ export const useAuth = () => {
         userDetails: null,
         loading: false,
         initialized: true,
-        login: () => {},
-        logout: () => {},
-        updateProfile: () => {},
+        login: () => Promise.resolve({ success: false, error: 'No auth context available' }),
+        logout: () => Promise.resolve({ success: false, error: 'No auth context available' }),
+        updateProfile: () => Promise.resolve({ success: false, error: 'No auth context available' }),
         isAdmin: () => false,
         getRememberedEmail: () => null
       };
@@ -33,9 +33,9 @@ export const useAuth = () => {
       userDetails: null,
       loading: false,
       initialized: true,
-      login: () => {},
-      logout: () => {},
-      updateProfile: () => {},
+      login: () => Promise.resolve({ success: false, error: 'Error in auth hook' }),
+      logout: () => Promise.resolve({ success: false, error: 'Error in auth hook' }),
+      updateProfile: () => Promise.resolve({ success: false, error: 'Error in auth hook' }),
       isAdmin: () => false,
       getRememberedEmail: () => null
     };

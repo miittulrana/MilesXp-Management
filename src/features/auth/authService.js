@@ -1,9 +1,21 @@
-// src/features/auth/authService.js
 import supabase from '../../lib/supabase';
+import { useAuth } from '../../hooks/useAuth';
 
+/**
+ * Authentication service adapter that uses the main auth context
+ * This provides compatibility for existing components that use this service
+ */
 const authService = {
+  /**
+   * Login with email and password
+   * @param {string} email - User email
+   * @param {string} password - User password
+   * @returns {Promise<Object>} Login result
+   */
   login: async (email, password) => {
     try {
+      // This would normally use the useAuth hook, but since hooks can't be used inside
+      // normal functions, we'll use supabase directly to maintain compatibility
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password
@@ -18,6 +30,10 @@ const authService = {
     }
   },
   
+  /**
+   * Logout current user
+   * @returns {Promise<Object>} Logout result
+   */
   logout: async () => {
     try {
       const { error } = await supabase.auth.signOut();
@@ -29,6 +45,10 @@ const authService = {
     }
   },
   
+  /**
+   * Get current user profile
+   * @returns {Promise<Object>} User profile data
+   */
   getUserProfile: async () => {
     try {
       const { data: authData, error: authError } = await supabase.auth.getUser();
@@ -49,6 +69,11 @@ const authService = {
     }
   },
   
+  /**
+   * Update user profile
+   * @param {Object} profileData - Profile data to update
+   * @returns {Promise<Object>} Updated profile
+   */
   updateProfile: async (profileData) => {
     try {
       const { data: authData } = await supabase.auth.getUser();

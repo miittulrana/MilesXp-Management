@@ -5,9 +5,7 @@ import { ROUTES, ROLES } from './lib/constants';
 import AuthProvider from './context/AuthContext';
 import ToastProvider from './context/ToastContext';
 import { useAuth } from './hooks/useAuth';
-import AdminRoutes from './routes/AdminRoutes';
-import DriverRoutes from './routes/DriverRoutes';
-import PublicRoutes from './routes/PublicRoutes';
+import Routes from './routes/Routes'; // Import the new unified Routes component
 import Loader from './components/common/Loader/Loader';
 
 // Import global styles
@@ -49,7 +47,7 @@ const AppRouter = () => {
   // Emergency fallback for long loading time
   if (loadingTimeout) {
     console.log("[ROUTER] Using fallback routes due to timeout");
-    return <PublicRoutes />;
+    return <Routes />;
   }
 
   // Only show loading if not initialized yet, with max timeout of 10 seconds
@@ -78,34 +76,8 @@ const AppRouter = () => {
     );
   }
   
-  // User is authenticated
-  if (user) {
-    console.log("[ROUTER] User authenticated, proceeding to routes");
-    
-    // If we have userDetails with role, use that to determine routes
-    if (userDetails?.role === ROLES.ADMIN) {
-      console.log("[ROUTER] Rendering admin routes");
-      return <AdminRoutes />;
-    } else if (userDetails) {
-      console.log("[ROUTER] Rendering driver routes");
-      return <DriverRoutes />;
-    } else {
-      // We have a user but no userDetails - this should be rare
-      // but we'll handle it gracefully by defaulting to driver routes
-      console.log("[ROUTER] User authenticated but no details, defaulting to driver routes");
-      return <DriverRoutes />;
-    }
-  }
-  
-  // Auth error - redirect to public routes
-  if (authError) {
-    console.log("[ROUTER] Authentication error, rendering public routes");
-    return <PublicRoutes />;
-  }
-  
-  // Default to public routes
-  console.log("[ROUTER] Not authenticated, rendering public routes");
-  return <PublicRoutes />;
+  // Render the unified Routes component
+  return <Routes />;
 };
 
 /**
