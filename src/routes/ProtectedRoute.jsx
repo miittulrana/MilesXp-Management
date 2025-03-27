@@ -30,6 +30,25 @@ const ProtectedRoute = ({
     initialized
   });
 
+  // Still initializing auth - show a temporary loader
+  if (!initialized) {
+    return (
+      <div className="protected-route-loader" style={{ 
+        display: 'flex', 
+        justifyContent: 'center', 
+        alignItems: 'center', 
+        minHeight: '100vh' 
+      }}>
+        <div style={{ textAlign: 'center' }}>
+          <Loader size="medium" text="Initializing authentication..." />
+          <p style={{ marginTop: '10px', fontSize: '14px', color: '#6c757d' }}>
+            This may take a moment...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   // Handle redirect when already authenticated (like login page)
   if (redirectWhenAuthed && user) {
     const redirectPath = getRedirectPath ? getRedirectPath(userRole) : redirectTo;
@@ -50,10 +69,15 @@ const ProtectedRoute = ({
   }
 
   // If we're still loading user details but we have user, show loading
-  if (roles && user && loading && !userDetails) {
+  if (roles && user && loading) {
     return (
-      <div className="protected-route-loader">
-        <Loader size="medium" text="Loading data..." />
+      <div className="protected-route-loader" style={{ 
+        display: 'flex', 
+        justifyContent: 'center', 
+        alignItems: 'center', 
+        minHeight: '100vh' 
+      }}>
+        <Loader size="medium" text="Loading user data..." />
       </div>
     );
   }
@@ -70,7 +94,7 @@ const ProtectedRoute = ({
   // Render the protected component
   console.log("[PROTECTED] Access granted");
   
-  // CRITICAL FIX: Properly handle children as function
+  // Handle children as function
   if (typeof children === 'function') {
     return children({ userRole });
   }

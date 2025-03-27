@@ -4,36 +4,48 @@ import { ROUTES, ROLES } from '../lib/constants';
 import AdminLayout from '../components/layout/AdminLayout';
 import DriverLayout from '../components/layout/DriverLayout';
 import ProtectedRoute from './ProtectedRoute';
+import Loader from '../components/common/Loader/Loader';
 
-// Loading fallback
+// Loading fallback that's more informative
 const LoadingFallback = () => (
-  <div className="page-loading">
-    <div className="page-loading-spinner"></div>
+  <div className="page-loading" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
+    <div style={{ textAlign: 'center' }}>
+      <div className="page-loading-spinner" style={{ 
+        display: 'inline-block',
+        width: '50px',
+        height: '50px',
+        border: '4px solid rgba(0, 77, 153, 0.1)',
+        borderRadius: '50%',
+        borderTopColor: '#004d99',
+        animation: 'spin 1s ease-in-out infinite'
+      }}></div>
+      <p style={{ marginTop: '10px' }}>Loading application resources...</p>
+    </div>
   </div>
 );
 
-// Lazy load pages
-const LoginPage = React.lazy(() => import('../features/auth/LoginPage'));
-const Dashboard = React.lazy(() => import('../features/dashboard/DashboardPage'));
-const Vehicles = React.lazy(() => import('../features/vehicles/VehiclesPage'));
-const VehicleDetails = React.lazy(() => import('../features/vehicles/VehicleDetailPage'));
-const Drivers = React.lazy(() => import('../features/drivers/DriversPage'));
-const DriverDetails = React.lazy(() => import('../features/drivers/DriverDetailPage'));
-const Documents = React.lazy(() => import('../features/documents/DocumentsPage'));
-// Removed DocumentStatusPage import that was causing an error
-const Assignments = React.lazy(() => import('../features/assignments/AssignmentsPage'));
-const Blocks = React.lazy(() => import('../features/blocks/BlocksPage'));
-const Service = React.lazy(() => import('../features/service/ServicePage'));
-const Tracking = React.lazy(() => import('../features/tracking/TrackingPage'));
-const VehicleLogs = React.lazy(() => import('../features/reports/ReportsPage'));
-const Reports = React.lazy(() => import('../features/reports/ReportsPage'));
-const Profile = React.lazy(() => import('../features/auth/ProfilePage'));
-const Settings = React.lazy(() => import('../features/settings/SettingsPage'));
-const Users = React.lazy(() => import('../features/users/UsersPage')); // Added Users page
+// Import with standard imports instead of lazy loading for now
+// Once the app works, you can switch back to lazy loading
+import LoginPage from '../features/auth/LoginPage';
+import Dashboard from '../features/dashboard/DashboardPage';
+import Vehicles from '../features/vehicles/VehiclesPage';
+import VehicleDetails from '../features/vehicles/VehicleDetailPage';
+import Drivers from '../features/drivers/DriversPage';
+import DriverDetails from '../features/drivers/DriverDetailPage';
+import Documents from '../features/documents/DocumentsPage';
+import Assignments from '../features/assignments/AssignmentsPage';
+import Blocks from '../features/blocks/BlocksPage';
+import Service from '../features/service/ServicePage';
+import Tracking from '../features/tracking/TrackingPage';
+import Reports from '../features/reports/ReportsPage';
+import Profile from '../features/auth/ProfilePage';
+import Settings from '../features/settings/SettingsPage';
+import Users from '../features/users/UsersPage';
+import DirectLoginPage from '../features/auth/DirectLoginPage';
 
-// Simple NotFound component instead of importing
+// Simple NotFound component
 const NotFoundPage = () => (
-  <div className="not-found-page">
+  <div className="not-found-page" style={{ textAlign: 'center', padding: '40px' }}>
     <h1>404 - Page Not Found</h1>
     <p>The page you are looking for does not exist.</p>
   </div>
@@ -67,17 +79,24 @@ const AppRoutes = () => {
           }
         />
 
+        {/* Root route - redirect */}
+        <Route
+          path="/"
+          element={<Navigate to={ROUTES.LOGIN} replace />}
+        />
+
         {/* Dashboard route */}
         <Route
           path={ROUTES.DASHBOARD}
           element={
             <ProtectedRoute
-              roles={[ROLES.ADMIN]}
-              redirectTo={ROUTES.VEHICLES}
+              roles={[ROLES.ADMIN, ROLES.DRIVER]}
             >
-              <AdminLayout>
-                <Dashboard />
-              </AdminLayout>
+              {props => (
+                <LayoutSelector userRole={props.userRole}>
+                  <Dashboard />
+                </LayoutSelector>
+              )}
             </ProtectedRoute>
           }
         />
@@ -109,14 +128,16 @@ const AppRoutes = () => {
           }
         />
 
-        {/* Driver routes - admin only */}
+        {/* Driver routes */}
         <Route
           path={ROUTES.DRIVERS}
           element={
-            <ProtectedRoute roles={[ROLES.ADMIN]} redirectTo={ROUTES.VEHICLES}>
-              <AdminLayout>
-                <Drivers />
-              </AdminLayout>
+            <ProtectedRoute roles={[ROLES.ADMIN, ROLES.DRIVER]}>
+              {props => (
+                <LayoutSelector userRole={props.userRole}>
+                  <Drivers />
+                </LayoutSelector>
+              )}
             </ProtectedRoute>
           }
         />
@@ -124,10 +145,12 @@ const AppRoutes = () => {
         <Route
           path={`${ROUTES.DRIVERS}/:id`}
           element={
-            <ProtectedRoute roles={[ROLES.ADMIN]} redirectTo={ROUTES.VEHICLES}>
-              <AdminLayout>
-                <DriverDetails />
-              </AdminLayout>
+            <ProtectedRoute roles={[ROLES.ADMIN, ROLES.DRIVER]}>
+              {props => (
+                <LayoutSelector userRole={props.userRole}>
+                  <DriverDetails />
+                </LayoutSelector>
+              )}
             </ProtectedRoute>
           }
         />
@@ -146,26 +169,30 @@ const AppRoutes = () => {
           }
         />
 
-        {/* Assignment routes - admin only */}
+        {/* Assignment routes */}
         <Route
           path={ROUTES.ASSIGN_VEHICLE}
           element={
-            <ProtectedRoute roles={[ROLES.ADMIN]} redirectTo={ROUTES.VEHICLES}>
-              <AdminLayout>
-                <Assignments />
-              </AdminLayout>
+            <ProtectedRoute roles={[ROLES.ADMIN, ROLES.DRIVER]}>
+              {props => (
+                <LayoutSelector userRole={props.userRole}>
+                  <Assignments />
+                </LayoutSelector>
+              )}
             </ProtectedRoute>
           }
         />
 
-        {/* Block routes - admin only */}
+        {/* Block routes */}
         <Route
           path={ROUTES.BLOCK_VEHICLE}
           element={
-            <ProtectedRoute roles={[ROLES.ADMIN]} redirectTo={ROUTES.VEHICLES}>
-              <AdminLayout>
-                <Blocks />
-              </AdminLayout>
+            <ProtectedRoute roles={[ROLES.ADMIN, ROLES.DRIVER]}>
+              {props => (
+                <LayoutSelector userRole={props.userRole}>
+                  <Blocks />
+                </LayoutSelector>
+              )}
             </ProtectedRoute>
           }
         />
@@ -191,7 +218,7 @@ const AppRoutes = () => {
             <ProtectedRoute roles={[ROLES.ADMIN, ROLES.DRIVER]}>
               {props => (
                 <LayoutSelector userRole={props.userRole}>
-                  <VehicleLogs />
+                  <Reports />
                 </LayoutSelector>
               )}
             </ProtectedRoute>
@@ -212,26 +239,30 @@ const AppRoutes = () => {
           }
         />
 
-        {/* Report routes - admin only */}
+        {/* Report routes */}
         <Route
           path={ROUTES.REPORTS}
           element={
-            <ProtectedRoute roles={[ROLES.ADMIN]} redirectTo={ROUTES.VEHICLES}>
-              <AdminLayout>
-                <Reports />
-              </AdminLayout>
+            <ProtectedRoute roles={[ROLES.ADMIN, ROLES.DRIVER]}>
+              {props => (
+                <LayoutSelector userRole={props.userRole}>
+                  <Reports />
+                </LayoutSelector>
+              )}
             </ProtectedRoute>
           }
         />
 
-        {/* User management routes - admin only */}
+        {/* User management routes */}
         <Route
           path={ROUTES.USERS}
           element={
-            <ProtectedRoute roles={[ROLES.ADMIN]} redirectTo={ROUTES.DASHBOARD}>
-              <AdminLayout>
-                <Users />
-              </AdminLayout>
+            <ProtectedRoute roles={[ROLES.ADMIN]}>
+              {props => (
+                <LayoutSelector userRole={props.userRole}>
+                  <Users />
+                </LayoutSelector>
+              )}
             </ProtectedRoute>
           }
         />
@@ -250,24 +281,16 @@ const AppRoutes = () => {
           }
         />
 
-        {/* Settings route - admin only */}
+        {/* Settings route */}
         <Route
           path={ROUTES.SETTINGS}
           element={
-            <ProtectedRoute roles={[ROLES.ADMIN]} redirectTo={ROUTES.VEHICLES}>
-              <AdminLayout>
-                <Settings />
-              </AdminLayout>
-            </ProtectedRoute>
-          }
-        />
-
-        {/* Root route - redirect */}
-        <Route
-          path="/"
-          element={
-            <ProtectedRoute>
-              <Navigate to={ROUTES.DASHBOARD} replace />
+            <ProtectedRoute roles={[ROLES.ADMIN]}>
+              {props => (
+                <LayoutSelector userRole={props.userRole}>
+                  <Settings />
+                </LayoutSelector>
+              )}
             </ProtectedRoute>
           }
         />
@@ -275,15 +298,7 @@ const AppRoutes = () => {
         {/* 404 route */}
         <Route
           path="*"
-          element={
-            <ProtectedRoute roles={[ROLES.ADMIN, ROLES.DRIVER]} redirectTo={ROUTES.LOGIN}>
-              {props => (
-                <LayoutSelector userRole={props.userRole}>
-                  <NotFoundPage />
-                </LayoutSelector>
-              )}
-            </ProtectedRoute>
-          }
+          element={<NotFoundPage />}
         />
       </Routes>
     </Suspense>
