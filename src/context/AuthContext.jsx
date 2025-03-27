@@ -25,17 +25,29 @@ export const AuthProvider = ({ children }) => {
       try {
         console.log('Fetching user details for ID:', userId);
         
-        // Just for testing - create a default user if none is found
-        // This is a temporary solution to help debug
-        const defaultUserDetails = {
-          id: userId,
-          auth_id: userId,
-          name: 'Default User',
-          email: 'user@example.com',
-          role: ROLES.ADMIN
-        };
+        const { data, error } = await supabase
+          .from('users')
+          .select('*')
+          .eq('auth_id', userId)
+          .single();
         
-        return defaultUserDetails;
+        if (error) {
+          console.error('Error fetching user details:', error);
+          
+          // If we can't find the user in the database, create a default one
+          // This is helpful for initial setup or when auth exists but user record doesn't
+          const defaultUserDetails = {
+            id: userId,
+            auth_id: userId,
+            name: 'Default User',
+            email: user?.email || 'user@example.com',
+            role: ROLES.ADMIN
+          };
+          
+          return defaultUserDetails;
+        }
+        
+        return data;
       } catch (err) {
         console.error('Exception fetching user details:', err);
         return null;
@@ -87,6 +99,7 @@ export const AuthProvider = ({ children }) => {
               // Fallback to basic details if database fetch fails
               setUserDetails({
                 id: session.user.id,
+                auth_id: session.user.id,
                 name: session.user.email?.split('@')[0] || 'User',
                 email: session.user.email,
                 role: ROLES.ADMIN // Default to admin role for now to help debugging
@@ -131,6 +144,7 @@ export const AuthProvider = ({ children }) => {
           // Fallback to basic details if database fetch fails
           setUserDetails({
             id: session.user.id,
+            auth_id: session.user.id,
             name: session.user.email?.split('@')[0] || 'User',
             email: session.user.email,
             role: ROLES.ADMIN // Default to admin role for testing
@@ -172,35 +186,28 @@ export const AuthProvider = ({ children }) => {
       
       console.log('Attempting login for:', email);
       
-      // Let's create a dummy admin user without actually contacting Supabase
-      // This is temporary to help with debugging
-      const mockUser = {
-        id: 'dummy-id-123',
-        email: email,
-        user_metadata: {
-          name: email.split('@')[0]
-        }
-      };
+      // Use the actual Supabase auth instead of mock
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      });
       
-      setUser(mockUser);
-      
-      // Create dummy user details
-      const mockUserDetails = {
-        id: 'db-id-123',
-        auth_id: 'dummy-id-123',
-        name: email.split('@')[0],
-        email: email,
-        role: ROLES.ADMIN
-      };
-      
-      setUserDetails(mockUserDetails);
+      if (error) {
+        console.error("Login error:", error);
+        setAuthError(error);
+        setLoading(false);
+        return { success: false, error };
+      }
       
       if (remember) {
         localStorage.setItem(STORAGE_KEYS.REMEMBER_USER, email);
       }
       
+      // Note: The user state will be set by the auth listener
+      // No need to manually set user and userDetails here
+      
       setLoading(false);
-      return { success: true, userRole: ROLES.ADMIN };
+      return { success: true, userRole: data?.user?.role || ROLES.ADMIN };
     } catch (error) {
       console.error("Login error:", error);
       setAuthError(error);
@@ -213,10 +220,16 @@ export const AuthProvider = ({ children }) => {
   const logout = async () => {
     try {
       setLoading(true);
-      setUser(null);
-      setUserDetails(null);
+      const { error } = await supabase.auth.signOut();
+      
+      if (error) {
+        console.error("Logout error:", error);
+        setLoading(false);
+        return { success: false, error };
+      }
+      
+      // The onAuthStateChange listener will handle clearing user state
       setLoading(false);
-      localStorage.removeItem(STORAGE_KEYS.REMEMBER_USER);
       return { success: true };
     } catch (error) {
       console.error("Logout error:", error);
@@ -240,12 +253,25 @@ export const AuthProvider = ({ children }) => {
     try {
       if (!user) return { success: false, error: 'No user logged in' };
       
+      // Update the user's profile in the database
+      const { data, error } = await supabase
+        .from('users')
+        .update(profileData)
+        .eq('auth_id', user.id)
+        .select();
+      
+      if (error) {
+        console.error("Update profile error:", error);
+        return { success: false, error };
+      }
+      
+      // Update local state
       setUserDetails(prev => ({
         ...prev,
         ...profileData
       }));
       
-      return { success: true, data: { ...userDetails, ...profileData } };
+      return { success: true, data: data[0] || { ...userDetails, ...profileData } };
     } catch (error) {
       console.error("Update profile error:", error);
       return { success: false, error };

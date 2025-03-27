@@ -41,7 +41,6 @@ import Reports from '../features/reports/ReportsPage';
 import Profile from '../features/auth/ProfilePage';
 import Settings from '../features/settings/SettingsPage';
 import Users from '../features/users/UsersPage';
-import DirectLoginPage from '../features/auth/DirectLoginPage';
 
 // Simple NotFound component
 const NotFoundPage = () => (

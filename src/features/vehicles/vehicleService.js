@@ -11,6 +11,15 @@ const vehicleService = {
   getVehicles: async () => {
     try {
       console.log('Fetching vehicles...');
+      
+      // Check authentication first
+      const { data: authData, error: authError } = await supabase.auth.getSession();
+      
+      if (authError || !authData.session) {
+        console.error('Auth error:', authError);
+        throw new Error('Authentication required');
+      }
+      
       const { data, error } = await supabase
         .from('vehicles')
         .select(`
@@ -45,6 +54,15 @@ const vehicleService = {
   getVehicleById: async (id) => {
     try {
       console.log('Fetching vehicle details for ID:', id);
+      
+      // Check authentication
+      const { data: authData, error: authError } = await supabase.auth.getSession();
+      
+      if (authError || !authData.session) {
+        console.error('Auth error:', authError);
+        throw new Error('Authentication required');
+      }
+      
       const { data, error } = await supabase
         .from('vehicles')
         .select(`
@@ -82,6 +100,15 @@ const vehicleService = {
   getVehiclesByStatus: async (status) => {
     try {
       console.log(`Fetching vehicles with status: ${status}`);
+      
+      // Check authentication
+      const { data: authData, error: authError } = await supabase.auth.getSession();
+      
+      if (authError || !authData.session) {
+        console.error('Auth error:', authError);
+        throw new Error('Authentication required');
+      }
+      
       const { data, error } = await supabase
         .from('vehicles')
         .select(`
@@ -116,6 +143,15 @@ const vehicleService = {
   getAvailableVehicles: async () => {
     try {
       console.log('Fetching available vehicles');
+      
+      // Check authentication
+      const { data: authData, error: authError } = await supabase.auth.getSession();
+      
+      if (authError || !authData.session) {
+        console.error('Auth error:', authError);
+        throw new Error('Authentication required');
+      }
+      
       const { data, error } = await supabase
         .from('vehicles')
         .select('*')
@@ -143,6 +179,15 @@ const vehicleService = {
   addVehicle: async (vehicleData) => {
     try {
       console.log('Adding new vehicle:', vehicleData);
+      
+      // Check authentication
+      const { data: authData, error: authError } = await supabase.auth.getSession();
+      
+      if (authError || !authData.session) {
+        console.error('Auth error:', authError);
+        throw new Error('Authentication required');
+      }
+      
       const { data, error } = await supabase
         .from('vehicles')
         .insert({
@@ -176,6 +221,14 @@ const vehicleService = {
   updateVehicle: async (id, vehicleData) => {
     try {
       console.log('Updating vehicle ID:', id, vehicleData);
+      
+      // Check authentication
+      const { data: authData, error: authError } = await supabase.auth.getSession();
+      
+      if (authError || !authData.session) {
+        console.error('Auth error:', authError);
+        throw new Error('Authentication required');
+      }
       
       // Create update object with only provided fields
       const updateData = {};
@@ -213,6 +266,15 @@ const vehicleService = {
   deleteVehicle: async (id) => {
     try {
       console.log('Deleting vehicle ID:', id);
+      
+      // Check authentication
+      const { data: authData, error: authError } = await supabase.auth.getSession();
+      
+      if (authError || !authData.session) {
+        console.error('Auth error:', authError);
+        throw new Error('Authentication required');
+      }
+      
       const { error } = await supabase
         .from('vehicles')
         .delete()
@@ -240,6 +302,15 @@ const vehicleService = {
   assignVehicle: async (vehicleId, driverId) => {
     try {
       console.log(`Assigning vehicle ${vehicleId} to driver ${driverId}`);
+      
+      // Check authentication
+      const { data: authData, error: authError } = await supabase.auth.getSession();
+      
+      if (authError || !authData.session) {
+        console.error('Auth error:', authError);
+        throw new Error('Authentication required');
+      }
+      
       const { data, error } = await supabase
         .from('vehicles')
         .update({
@@ -270,6 +341,15 @@ const vehicleService = {
   unassignVehicle: async (vehicleId) => {
     try {
       console.log(`Unassigning vehicle ${vehicleId}`);
+      
+      // Check authentication
+      const { data: authData, error: authError } = await supabase.auth.getSession();
+      
+      if (authError || !authData.session) {
+        console.error('Auth error:', authError);
+        throw new Error('Authentication required');
+      }
+      
       const { data, error } = await supabase
         .from('vehicles')
         .update({
@@ -300,6 +380,15 @@ const vehicleService = {
   getVehicleMetadata: async (vehicleId) => {
     try {
       console.log(`Fetching metadata for vehicle ${vehicleId}`);
+      
+      // Check authentication
+      const { data: authData, error: authError } = await supabase.auth.getSession();
+      
+      if (authError || !authData.session) {
+        console.error('Auth error:', authError);
+        throw new Error('Authentication required');
+      }
+      
       const { data, error } = await supabase
         .from('vehicles')
         .select('metadata')
@@ -327,6 +416,14 @@ const vehicleService = {
   updateVehicleMetadata: async (vehicleId, metadata) => {
     try {
       console.log(`Updating metadata for vehicle ${vehicleId}`);
+      
+      // Check authentication
+      const { data: authData, error: authError } = await supabase.auth.getSession();
+      
+      if (authError || !authData.session) {
+        console.error('Auth error:', authError);
+        throw new Error('Authentication required');
+      }
       
       // First get current metadata
       const { data: currentData, error: fetchError } = await supabase

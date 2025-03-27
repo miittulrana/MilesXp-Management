@@ -20,15 +20,29 @@ const ProtectedRoute = ({
   const { user, userDetails, initialized, loading } = useAuth();
   const location = useLocation();
   const userRole = userDetails?.role;
+  
+  // Prevent infinite redirect loops - store the previous redirect in sessionStorage
+  const lastRedirectTime = sessionStorage.getItem('lastRedirectTime');
+  const lastRedirectPath = sessionStorage.getItem('lastRedirectPath');
+  const currentTime = Date.now();
+  const redirectThreshold = 1000; // 1 second
 
-  console.log("[PROTECTED] Route check:", { 
-    path: location.pathname,
-    roles, 
-    hasUser: !!user, 
-    userRole,
-    loading, 
-    initialized
-  });
+  // Check if we're stuck in a redirect loop
+  const isRedirectLoop = lastRedirectPath === location.pathname && 
+                          lastRedirectTime && 
+                          (currentTime - parseInt(lastRedirectTime)) < redirectThreshold;
+
+  // Only log when not in a potential loop
+  if (!isRedirectLoop) {
+    console.log("[PROTECTED] Route check:", { 
+      path: location.pathname,
+      roles, 
+      hasUser: !!user, 
+      userRole,
+      loading, 
+      initialized
+    });
+  }
 
   // Still initializing auth - show a temporary loader
   if (!initialized) {
@@ -49,22 +63,55 @@ const ProtectedRoute = ({
     );
   }
 
+  // If we're in a redirect loop, just render the children to break the loop
+  if (isRedirectLoop) {
+    console.warn("[PROTECTED] Breaking potential redirect loop for path:", location.pathname);
+    // Reset the redirect tracker
+    sessionStorage.removeItem('lastRedirectTime');
+    sessionStorage.removeItem('lastRedirectPath');
+    
+    // Just render the content
+    if (typeof children === 'function') {
+      return children({ userRole: userRole || 'driver' });
+    }
+    return <>{children}</>;
+  }
+
   // Handle redirect when already authenticated (like login page)
-  if (redirectWhenAuthed && user) {
+  if (redirectWhenAuthed && user && !loading) {
     const redirectPath = getRedirectPath ? getRedirectPath(userRole) : redirectTo;
-    console.log(`[PROTECTED] Already authenticated, redirecting to ${redirectPath}`);
+    
+    if (!isRedirectLoop) {
+      console.log(`[PROTECTED] Already authenticated, redirecting to ${redirectPath}`);
+      // Track this redirect to detect loops
+      sessionStorage.setItem('lastRedirectTime', currentTime.toString());
+      sessionStorage.setItem('lastRedirectPath', redirectPath);
+    }
+    
     return <Navigate to={redirectPath} replace />;
   }
 
   // Redirect to login if not authenticated and route requires authentication
-  if (roles && !user) {
-    console.log("[PROTECTED] Not authenticated, redirecting to login");
+  if (roles && !user && !loading) {
+    if (!isRedirectLoop) {
+      console.log("[PROTECTED] Not authenticated, redirecting to login");
+      // Track this redirect to detect loops
+      sessionStorage.setItem('lastRedirectTime', currentTime.toString());
+      sessionStorage.setItem('lastRedirectPath', ROUTES.LOGIN);
+    }
+    
     return <Navigate to={ROUTES.LOGIN} state={{ from: location.pathname }} replace />;
   }
 
   // Check role-based access - only if we have userDetails loaded
-  if (roles && user && userDetails && !roles.includes(userRole)) {
-    console.log(`[PROTECTED] User role ${userRole} not authorized for this route`);
+  if (roles && user && userDetails && !roles.includes(userRole) && !loading) {
+    if (!isRedirectLoop) {
+      console.log(`[PROTECTED] User role ${userRole} not authorized for this route`);
+      // Track this redirect to detect loops
+      sessionStorage.setItem('lastRedirectTime', currentTime.toString());
+      sessionStorage.setItem('lastRedirectPath', redirectTo);
+    }
+    
     return <Navigate to={redirectTo} replace />;
   }
 
@@ -83,16 +130,24 @@ const ProtectedRoute = ({
   }
 
   // Special case for custom redirect
-  if (getRedirectPath && user && userDetails) {
+  if (getRedirectPath && user && userDetails && !loading) {
     const redirectPath = getRedirectPath(userRole);
-    if (redirectPath) {
-      console.log(`[PROTECTED] Role-based redirect to ${redirectPath}`);
+    if (redirectPath && redirectPath !== location.pathname) {
+      if (!isRedirectLoop) {
+        console.log(`[PROTECTED] Role-based redirect to ${redirectPath}`);
+        // Track this redirect to detect loops
+        sessionStorage.setItem('lastRedirectTime', currentTime.toString());
+        sessionStorage.setItem('lastRedirectPath', redirectPath);
+      }
+      
       return <Navigate to={redirectPath} replace />;
     }
   }
 
   // Render the protected component
-  console.log("[PROTECTED] Access granted");
+  if (!isRedirectLoop) {
+    console.log("[PROTECTED] Access granted");
+  }
   
   // Handle children as function
   if (typeof children === 'function') {
