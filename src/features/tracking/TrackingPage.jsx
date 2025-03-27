@@ -1,23 +1,56 @@
-// src/features/tracking/TrackingPage.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import Card from '../../components/common/Card/Card';
 import { CardBody, CardHeader } from '../../components/common/Card/Card';
 import Button from '../../components/common/Button/Button';
-import Modal from '../../components/common/Modal/Modal';
 import trackingService from './trackingService';
 import { useToast } from '../../hooks/useToast';
+import './TrackingPage.css';
 
+// Mapbox token
+const MAPBOX_TOKEN = 'pk.eyJ1IjoicmFuYWppNSIsImEiOiJjbThya2Y3ZmYwYWx6Mmxxb2JyazVyaXI4In0.gKa-iiWywmNLkg1HQ4Ln-Q'; // Replace with your actual Mapbox token
+
+/**
+ * Vehicle Tracking Page Component
+ */
 const TrackingPage = () => {
   const [vehicles, setVehicles] = useState([]);
   const [filteredVehicles, setFilteredVehicles] = useState([]);
   const [selectedVehicle, setSelectedVehicle] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
+  const [mapLoaded, setMapLoaded] = useState(false);
+  const [isPathVisible, setIsPathVisible] = useState(false);
   const [filterValue, setFilterValue] = useState('');
-  const { showError } = useToast();
   
+  const mapContainer = useRef(null);
+  const map = useRef(null);
+  const markers = useRef({});
+  const path = useRef(null);
+  
+  const { showSuccess, showError } = useToast();
+  
+  // Initialize Mapbox when component mounts
   useEffect(() => {
+    // Initialize Mapbox
+    trackingService.initializeMapbox(MAPBOX_TOKEN);
+    
+    // Load vehicles
     loadVehicles();
+    
+    // Initialize map
+    initializeMap();
+    
+    // Cleanup function
+    return () => {
+      // Clean up markers
+      Object.values(markers.current).forEach(marker => {
+        if (marker.cleanup) marker.cleanup();
+      });
+      
+      // Clean up path
+      if (path.current && path.current.cleanup) {
+        path.current.cleanup();
+      }
+    };
   }, []);
   
   // Filter vehicles when filter value changes
@@ -32,79 +65,235 @@ const TrackingPage = () => {
       return (
         vehicle.plate_number.toLowerCase().includes(searchValue) ||
         vehicle.model.toLowerCase().includes(searchValue) ||
-        vehicle.users?.name?.toLowerCase().includes(searchValue)
+        (vehicle.driver_name && vehicle.driver_name.toLowerCase().includes(searchValue))
       );
     });
     
     setFilteredVehicles(filtered);
   }, [vehicles, filterValue]);
   
+  // Initialize Mapbox map
+  const initializeMap = () => {
+    try {
+      if (!mapContainer.current) return;
+      
+      map.current = trackingService.initMap(mapContainer.current, {
+        zoom: 10
+      });
+      
+      map.current.on('load', () => {
+        setMapLoaded(true);
+        showSuccess('Map loaded successfully');
+      });
+      
+      map.current.on('error', (e) => {
+        console.error('Map error:', e);
+        showError('Error loading map');
+      });
+    } catch (error) {
+      console.error('Error initializing map:', error);
+      showError('Failed to initialize map');
+    }
+  };
+  
+  // Load vehicles from API
   const loadVehicles = async () => {
     setLoading(true);
     
     try {
       const result = await trackingService.getTrackedVehicles();
       
-      if (result.error) {
-        showError('Error loading vehicles');
-        console.error('Error loading vehicles:', result.error);
-      } else {
-        setVehicles(result.data || []);
-        setFilteredVehicles(result.data || []);
+      setVehicles(result || []);
+      setFilteredVehicles(result || []);
+      
+      // Add markers for vehicles with position
+      if (map.current && mapLoaded) {
+        addVehicleMarkers(result);
       }
     } catch (error) {
-      showError('Error loading vehicles');
       console.error('Error loading vehicles:', error);
+      showError('Error loading vehicles');
     } finally {
       setLoading(false);
     }
   };
   
-  const handleVehicleSelect = (vehicle) => {
-    setSelectedVehicle(vehicle);
-    setIsDetailsModalOpen(true);
+  // Add markers for all vehicles
+  const addVehicleMarkers = (vehiclesToMark) => {
+    // Clean up existing markers
+    Object.values(markers.current).forEach(marker => {
+      if (marker.cleanup) marker.cleanup();
+    });
+    
+    markers.current = {};
+    
+    // Add new markers
+    vehiclesToMark.forEach(vehicle => {
+      if (!vehicle.position) return; // Skip vehicles without position
+      
+      const markerObject = trackingService.addVehicleMarker(map.current, vehicle, true);
+      markers.current[vehicle.id] = markerObject;
+    });
   };
   
+  // Handle vehicle selection
+  const handleVehicleSelect = async (vehicle) => {
+    setSelectedVehicle(vehicle);
+    
+    // Center map on selected vehicle if it has position
+    if (map.current && vehicle.position) {
+      map.current.flyTo({
+        center: [vehicle.position.longitude, vehicle.position.latitude],
+        zoom: 15,
+        essential: true
+      });
+      
+      // Create or update marker for this vehicle
+      if (markers.current[vehicle.id]) {
+        // Marker already exists, remove it first
+        markers.current[vehicle.id].cleanup();
+      }
+      
+      // Add new marker
+      markers.current[vehicle.id] = trackingService.addVehicleMarker(map.current, vehicle, true);
+      
+      // If path is visible, load and draw path
+      if (isPathVisible) {
+        await loadVehiclePath(vehicle.id);
+      }
+    }
+  };
+  
+  // Load and draw vehicle path
+  const loadVehiclePath = async (vehicleId) => {
+    try {
+      setLoading(true);
+      
+      // Get vehicle history for the last 24 hours
+      const endTime = new Date().toISOString();
+      const startTime = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      
+      const history = await trackingService.getVehicleTrackingHistory(
+        vehicleId,
+        startTime,
+        endTime
+      );
+      
+      if (!history || history.length === 0) {
+        showError('No tracking history available for this vehicle');
+        return;
+      }
+      
+      // Draw path
+      if (path.current && path.current.cleanup) {
+        path.current.cleanup();
+      }
+      
+      path.current = trackingService.drawVehiclePath(map.current, history);
+      
+      showSuccess(`Showing path with ${history.length} points`);
+    } catch (error) {
+      console.error('Error loading vehicle path:', error);
+      showError('Failed to load vehicle path');
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  // Toggle path visibility
+  const togglePath = async () => {
+    const newPathVisible = !isPathVisible;
+    setIsPathVisible(newPathVisible);
+    
+    if (newPathVisible && selectedVehicle) {
+      // Show path
+      await loadVehiclePath(selectedVehicle.id);
+    } else if (!newPathVisible && path.current) {
+      // Hide path
+      path.current.cleanup();
+      path.current = null;
+    }
+  };
+  
+  // Handle filter change
   const handleFilterChange = (e) => {
     setFilterValue(e.target.value);
   };
   
+  // Refresh vehicle data
+  const handleRefresh = () => {
+    loadVehicles();
+  };
+  
   return (
     <div className="tracking-page">
-      <h1 className="page-title">Vehicle Tracking</h1>
+      <div className="page-header">
+        <h1>Vehicle Tracking</h1>
+        <div className="header-actions">
+          <Button 
+            variant="outline" 
+            onClick={togglePath}
+            disabled={!selectedVehicle}
+          >
+            {isPathVisible ? 'Hide Path' : 'Show Path'}
+          </Button>
+          <Button 
+            variant="primary" 
+            onClick={handleRefresh}
+            loading={loading}
+          >
+            Refresh
+          </Button>
+        </div>
+      </div>
       
       <div className="tracking-layout">
+        {/* Map Container */}
         <div className="map-container">
           <Card>
-            <CardBody>
-              {loading ? (
-                <div className="map-placeholder loading">
-                  <p>Loading map...</p>
-                </div>
-              ) : (
-                <div className="map-placeholder">
-                  <p className="map-info">Map would be displayed here</p>
-                  <p className="map-subinfo">This is a simplified version without the actual map implementation</p>
-                  <div className="map-legend">
-                    <div className="legend-item">
-                      <span className="vehicle-marker available"></span>
-                      <span>Available</span>
-                    </div>
-                    <div className="legend-item">
-                      <span className="vehicle-marker assigned"></span>
-                      <span>Assigned</span>
-                    </div>
-                    <div className="legend-item">
-                      <span className="vehicle-marker selected"></span>
-                      <span>Selected</span>
-                    </div>
-                  </div>
+            <CardBody className="map-card-body">
+              {/* Map will be rendered here */}
+              <div 
+                ref={mapContainer} 
+                className="map-element"
+                style={{ width: '100%', height: '600px' }}
+              />
+              
+              {/* Loading overlay */}
+              {loading && (
+                <div className="map-loading-overlay">
+                  <div className="map-loading-spinner"></div>
+                  <div className="map-loading-text">Loading...</div>
                 </div>
               )}
+              
+              {/* Map Legend */}
+              <div className="map-legend">
+                <div className="legend-title">Legend</div>
+                <div className="legend-item">
+                  <span className="marker-icon available"></span>
+                  <span>Available</span>
+                </div>
+                <div className="legend-item">
+                  <span className="marker-icon assigned"></span>
+                  <span>Assigned</span>
+                </div>
+                <div className="legend-item">
+                  <span className="marker-icon blocked"></span>
+                  <span>Blocked</span>
+                </div>
+                {isPathVisible && (
+                  <div className="legend-item">
+                    <span className="path-line"></span>
+                    <span>Vehicle Path</span>
+                  </div>
+                )}
+              </div>
             </CardBody>
           </Card>
         </div>
         
+        {/* Vehicles Sidebar */}
         <div className="vehicles-sidebar">
           <Card>
             <CardHeader>
@@ -119,8 +308,9 @@ const TrackingPage = () => {
               </div>
             </CardHeader>
             <CardBody>
-              {loading ? (
+              {loading && vehicles.length === 0 ? (
                 <div className="loading-container">
+                  <div className="loading-spinner"></div>
                   <p>Loading vehicles...</p>
                 </div>
               ) : (
@@ -142,11 +332,16 @@ const TrackingPage = () => {
                         </div>
                         <div className="vehicle-model">{vehicle.model} {vehicle.year}</div>
                         <div className="vehicle-driver">
-                          Driver: {vehicle.users?.name || 'Unassigned'}
+                          Driver: {vehicle.driver_name || 'Unassigned'}
                         </div>
-                        {vehicle.position?.speed !== undefined && (
-                          <div className="vehicle-speed">
-                            {Math.round(vehicle.position.speed)} km/h
+                        {vehicle.position && (
+                          <div className="vehicle-position">
+                            <div className="vehicle-speed">
+                              {Math.round(vehicle.position.speed || 0)} km/h
+                            </div>
+                            <div className="vehicle-timestamp">
+                              Last update: {new Date(vehicle.position.timestamp).toLocaleTimeString()}
+                            </div>
                           </div>
                         )}
                       </div>
@@ -158,305 +353,6 @@ const TrackingPage = () => {
           </Card>
         </div>
       </div>
-      
-      {/* Vehicle details modal */}
-      {selectedVehicle && (
-        <Modal
-          isOpen={isDetailsModalOpen}
-          onClose={() => setIsDetailsModalOpen(false)}
-          title={`Vehicle Details: ${selectedVehicle.plate_number}`}
-        >
-          <div className="vehicle-details">
-            <div className="detail-section">
-              <h3>Vehicle Information</h3>
-              <div className="detail-grid">
-                <div className="detail-item">
-                  <span className="detail-label">Plate Number:</span>
-                  <span className="detail-value">{selectedVehicle.plate_number}</span>
-                </div>
-                <div className="detail-item">
-                  <span className="detail-label">Model:</span>
-                  <span className="detail-value">{selectedVehicle.model} {selectedVehicle.year}</span>
-                </div>
-                <div className="detail-item">
-                  <span className="detail-label">Status:</span>
-                  <span className="detail-value">{selectedVehicle.status}</span>
-                </div>
-              </div>
-            </div>
-            
-            <div className="detail-section">
-              <h3>Driver Information</h3>
-              <div className="detail-grid">
-                <div className="detail-item">
-                  <span className="detail-label">Name:</span>
-                  <span className="detail-value">{selectedVehicle.users?.name || 'Unassigned'}</span>
-                </div>
-                {selectedVehicle.users?.email && (
-                  <div className="detail-item">
-                    <span className="detail-label">Email:</span>
-                    <span className="detail-value">{selectedVehicle.users.email}</span>
-                  </div>
-                )}
-                {selectedVehicle.users?.phone && (
-                  <div className="detail-item">
-                    <span className="detail-label">Phone:</span>
-                    <span className="detail-value">{selectedVehicle.users.phone}</span>
-                  </div>
-                )}
-              </div>
-            </div>
-            
-            {selectedVehicle.position && (
-              <div className="detail-section">
-                <h3>Current Position</h3>
-                <div className="detail-grid">
-                  <div className="detail-item">
-                    <span className="detail-label">Last Updated:</span>
-                    <span className="detail-value">
-                      {new Date(selectedVehicle.position.timestamp).toLocaleString()}
-                    </span>
-                  </div>
-                  <div className="detail-item">
-                    <span className="detail-label">Coordinates:</span>
-                    <span className="detail-value">
-                      {selectedVehicle.position.latitude.toFixed(6)}, {selectedVehicle.position.longitude.toFixed(6)}
-                    </span>
-                  </div>
-                  {selectedVehicle.position.speed !== undefined && (
-                    <div className="detail-item">
-                      <span className="detail-label">Speed:</span>
-                      <span className="detail-value">{Math.round(selectedVehicle.position.speed)} km/h</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-            
-            <div className="modal-actions">
-              <Button onClick={() => setIsDetailsModalOpen(false)}>Close</Button>
-            </div>
-          </div>
-        </Modal>
-      )}
-      
-      <style jsx>{`
-        .tracking-page {
-          padding: 20px;
-        }
-        
-        .page-title {
-          margin-bottom: 20px;
-          font-size: 24px;
-          font-weight: bold;
-        }
-        
-        .tracking-layout {
-          display: grid;
-          grid-template-columns: 3fr 1fr;
-          gap: 20px;
-        }
-        
-        .map-placeholder {
-          height: 500px;
-          display: flex;
-          flex-direction: column;
-          justify-content: center;
-          align-items: center;
-          background-color: #f5f5f5;
-          border-radius: 8px;
-          text-align: center;
-        }
-        
-        .map-placeholder.loading {
-          background-color: #f9f9f9;
-        }
-        
-        .map-info {
-          font-size: 18px;
-          font-weight: 500;
-          margin-bottom: 10px;
-        }
-        
-        .map-subinfo {
-          color: #666;
-          margin-bottom: 20px;
-        }
-        
-        .map-legend {
-          display: flex;
-          gap: 15px;
-          margin-top: 10px;
-        }
-        
-        .legend-item {
-          display: flex;
-          align-items: center;
-          gap: 5px;
-        }
-        
-        .vehicle-marker {
-          width: 12px;
-          height: 12px;
-          border-radius: 50%;
-          display: inline-block;
-        }
-        
-        .vehicle-marker.available {
-          background-color: #22c55e;
-        }
-        
-        .vehicle-marker.assigned {
-          background-color: #3b82f6;
-        }
-        
-        .vehicle-marker.selected {
-          background-color: #f59e0b;
-        }
-        
-        .search-container {
-          width: 100%;
-        }
-        
-        .search-input {
-          width: 100%;
-          padding: 8px 12px;
-          border: 1px solid #ddd;
-          border-radius: 4px;
-          font-size: 14px;
-        }
-        
-        .vehicle-list {
-          display: flex;
-          flex-direction: column;
-          gap: 10px;
-          max-height: 500px;
-          overflow-y: auto;
-        }
-        
-        .no-vehicles {
-          padding: 20px;
-          text-align: center;
-          color: #666;
-        }
-        
-        .vehicle-item {
-          padding: 12px;
-          border-radius: 6px;
-          border: 1px solid #eee;
-          cursor: pointer;
-          transition: all 0.2s ease;
-        }
-        
-        .vehicle-item:hover {
-          background-color: #f9f9f9;
-        }
-        
-        .vehicle-item.selected {
-          border-color: #f59e0b;
-          background-color: #fff7ed;
-        }
-        
-        .vehicle-primary {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 4px;
-        }
-        
-        .plate-number {
-          font-weight: 600;
-          font-size: 16px;
-        }
-        
-        .status {
-          font-size: 12px;
-          padding: 2px 6px;
-          border-radius: 10px;
-        }
-        
-        .status.available {
-          background-color: #dcfce7;
-          color: #15803d;
-        }
-        
-        .status.assigned {
-          background-color: #dbeafe;
-          color: #1d4ed8;
-        }
-        
-        .status.blocked {
-          background-color: #fee2e2;
-          color: #b91c1c;
-        }
-        
-        .vehicle-model {
-          font-size: 14px;
-          color: #666;
-          margin-bottom: 4px;
-        }
-        
-        .vehicle-driver {
-          font-size: 13px;
-          color: #666;
-        }
-        
-        .vehicle-speed {
-          margin-top: 6px;
-          font-weight: 500;
-          color: #f59e0b;
-        }
-        
-        .vehicle-details {
-          padding: 10px;
-        }
-        
-        .detail-section {
-          margin-bottom: 20px;
-        }
-        
-        .detail-section h3 {
-          margin-bottom: 10px;
-          padding-bottom: 5px;
-          border-bottom: 1px solid #eee;
-        }
-        
-        .detail-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 10px;
-        }
-        
-        .detail-item {
-          display: flex;
-          flex-direction: column;
-        }
-        
-        .detail-label {
-          font-size: 13px;
-          color: #666;
-        }
-        
-        .detail-value {
-          font-weight: 500;
-        }
-        
-        .modal-actions {
-          display: flex;
-          justify-content: flex-end;
-          margin-top: 20px;
-        }
-        
-        @media (max-width: 768px) {
-          .tracking-layout {
-            grid-template-columns: 1fr;
-          }
-          
-          .detail-grid {
-            grid-template-columns: 1fr;
-          }
-        }
-      `}</style>
     </div>
   );
 };

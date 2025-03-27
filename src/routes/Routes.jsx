@@ -20,13 +20,16 @@ const VehicleDetails = React.lazy(() => import('../features/vehicles/VehicleDeta
 const Drivers = React.lazy(() => import('../features/drivers/DriversPage'));
 const DriverDetails = React.lazy(() => import('../features/drivers/DriverDetailPage'));
 const Documents = React.lazy(() => import('../features/documents/DocumentsPage'));
+// Removed DocumentStatusPage import that was causing an error
 const Assignments = React.lazy(() => import('../features/assignments/AssignmentsPage'));
 const Blocks = React.lazy(() => import('../features/blocks/BlocksPage'));
 const Service = React.lazy(() => import('../features/service/ServicePage'));
 const Tracking = React.lazy(() => import('../features/tracking/TrackingPage'));
+const VehicleLogs = React.lazy(() => import('../features/reports/ReportsPage'));
 const Reports = React.lazy(() => import('../features/reports/ReportsPage'));
 const Profile = React.lazy(() => import('../features/auth/ProfilePage'));
 const Settings = React.lazy(() => import('../features/settings/SettingsPage'));
+const Users = React.lazy(() => import('../features/users/UsersPage')); // Added Users page
 
 // Simple NotFound component instead of importing
 const NotFoundPage = () => (
@@ -102,6 +105,7 @@ const routeConfig = [
     layout: (props) => props.userRole === ROLES.ADMIN ? <AdminLayout>{props.children}</AdminLayout> : <DriverLayout>{props.children}</DriverLayout>,
     roles: [ROLES.ADMIN, ROLES.DRIVER],
   },
+  // Removed DocumentStatus route entry
   
   // Assignment routes - admin only
   {
@@ -129,6 +133,15 @@ const routeConfig = [
     roles: [ROLES.ADMIN, ROLES.DRIVER],
   },
   
+  // Vehicle logs route - accessible to all authenticated users
+  {
+    path: ROUTES.VEHICLE_LOGS,
+    element: <VehicleLogs />,
+    layout: (props) => props.userRole === ROLES.ADMIN ? <AdminLayout>{props.children}</AdminLayout> : <DriverLayout>{props.children}</DriverLayout>,
+    roles: [ROLES.ADMIN, ROLES.DRIVER],
+  },
+  
+  
   // Tracking routes - accessible to all authenticated users
   {
     path: ROUTES.VEHICLE_TRACKING,
@@ -144,6 +157,15 @@ const routeConfig = [
     layout: AdminLayout,
     roles: [ROLES.ADMIN],
     redirectTo: ROUTES.VEHICLES,
+  },
+  
+  // User management routes - admin only (NEW)
+  {
+    path: ROUTES.USERS,
+    element: <Users />,
+    layout: AdminLayout,
+    roles: [ROLES.ADMIN],
+    redirectTo: ROUTES.DASHBOARD,
   },
   
   // Profile route - accessible to all authenticated users
