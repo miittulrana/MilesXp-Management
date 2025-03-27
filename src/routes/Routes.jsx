@@ -39,171 +39,13 @@ const NotFoundPage = () => (
   </div>
 );
 
-/**
- * Route configuration with role-based access control
- * Each route can specify:
- * - path: URL path
- * - element: Component to render
- * - layout: Layout component to use
- * - roles: Array of roles that can access this route 
- * - redirectTo: Path to redirect if user doesn't have access
- */
-const routeConfig = [
-  // Public routes
-  {
-    path: ROUTES.LOGIN,
-    element: <LoginPage />,
-    layout: null, // No layout for login page
-    roles: null, // Null means accessible to everyone
-    redirectWhenAuthed: true, // Redirect if already authenticated
-    redirectTo: ROUTES.DASHBOARD, // Redirect to dashboard if already logged in
-  },
-  
-  // Dashboard route - admin only
-  {
-    path: ROUTES.DASHBOARD,
-    element: <Dashboard />,
-    layout: AdminLayout,
-    roles: [ROLES.ADMIN],
-    redirectTo: ROUTES.VEHICLES, // Redirect non-admins to vehicles
-  },
-  
-  // Vehicle routes - accessible to all authenticated users
-  {
-    path: ROUTES.VEHICLES,
-    element: <Vehicles />,
-    layout: (props) => props.userRole === ROLES.ADMIN ? <AdminLayout>{props.children}</AdminLayout> : <DriverLayout>{props.children}</DriverLayout>,
-    roles: [ROLES.ADMIN, ROLES.DRIVER],
-  },
-  {
-    path: `${ROUTES.VEHICLES}/:id`,
-    element: <VehicleDetails />,
-    layout: (props) => props.userRole === ROLES.ADMIN ? <AdminLayout>{props.children}</AdminLayout> : <DriverLayout>{props.children}</DriverLayout>,
-    roles: [ROLES.ADMIN, ROLES.DRIVER],
-  },
-  
-  // Driver routes - admin only
-  {
-    path: ROUTES.DRIVERS,
-    element: <Drivers />,
-    layout: AdminLayout,
-    roles: [ROLES.ADMIN],
-    redirectTo: ROUTES.VEHICLES,
-  },
-  {
-    path: `${ROUTES.DRIVERS}/:id`,
-    element: <DriverDetails />,
-    layout: AdminLayout,
-    roles: [ROLES.ADMIN],
-    redirectTo: ROUTES.VEHICLES,
-  },
-  
-  // Document routes - accessible to all authenticated users
-  {
-    path: ROUTES.DOCUMENTS,
-    element: <Documents />,
-    layout: (props) => props.userRole === ROLES.ADMIN ? <AdminLayout>{props.children}</AdminLayout> : <DriverLayout>{props.children}</DriverLayout>,
-    roles: [ROLES.ADMIN, ROLES.DRIVER],
-  },
-  // Removed DocumentStatus route entry
-  
-  // Assignment routes - admin only
-  {
-    path: ROUTES.ASSIGN_VEHICLE,
-    element: <Assignments />,
-    layout: AdminLayout,
-    roles: [ROLES.ADMIN],
-    redirectTo: ROUTES.VEHICLES,
-  },
-  
-  // Block routes - admin only
-  {
-    path: ROUTES.BLOCK_VEHICLE,
-    element: <Blocks />,
-    layout: AdminLayout,
-    roles: [ROLES.ADMIN],
-    redirectTo: ROUTES.VEHICLES,
-  },
-  
-  // Service routes - accessible to all authenticated users
-  {
-    path: ROUTES.SERVICE_DUES,
-    element: <Service />,
-    layout: (props) => props.userRole === ROLES.ADMIN ? <AdminLayout>{props.children}</AdminLayout> : <DriverLayout>{props.children}</DriverLayout>,
-    roles: [ROLES.ADMIN, ROLES.DRIVER],
-  },
-  
-  // Vehicle logs route - accessible to all authenticated users
-  {
-    path: ROUTES.VEHICLE_LOGS,
-    element: <VehicleLogs />,
-    layout: (props) => props.userRole === ROLES.ADMIN ? <AdminLayout>{props.children}</AdminLayout> : <DriverLayout>{props.children}</DriverLayout>,
-    roles: [ROLES.ADMIN, ROLES.DRIVER],
-  },
-  
-  
-  // Tracking routes - accessible to all authenticated users
-  {
-    path: ROUTES.VEHICLE_TRACKING,
-    element: <Tracking />,
-    layout: (props) => props.userRole === ROLES.ADMIN ? <AdminLayout>{props.children}</AdminLayout> : <DriverLayout>{props.children}</DriverLayout>,
-    roles: [ROLES.ADMIN, ROLES.DRIVER],
-  },
-  
-  // Report routes - admin only
-  {
-    path: ROUTES.REPORTS,
-    element: <Reports />,
-    layout: AdminLayout,
-    roles: [ROLES.ADMIN],
-    redirectTo: ROUTES.VEHICLES,
-  },
-  
-  // User management routes - admin only (NEW)
-  {
-    path: ROUTES.USERS,
-    element: <Users />,
-    layout: AdminLayout,
-    roles: [ROLES.ADMIN],
-    redirectTo: ROUTES.DASHBOARD,
-  },
-  
-  // Profile route - accessible to all authenticated users
-  {
-    path: ROUTES.PROFILE,
-    element: <Profile />,
-    layout: (props) => props.userRole === ROLES.ADMIN ? <AdminLayout>{props.children}</AdminLayout> : <DriverLayout>{props.children}</DriverLayout>,
-    roles: [ROLES.ADMIN, ROLES.DRIVER],
-  },
-  
-  // Settings route - admin only
-  {
-    path: ROUTES.SETTINGS,
-    element: <Settings />,
-    layout: AdminLayout,
-    roles: [ROLES.ADMIN],
-    redirectTo: ROUTES.VEHICLES,
-  },
-  
-  // Root route - redirect to dashboard or vehicles based on role
-  {
-    path: '/',
-    element: null,
-    layout: null,
-    roles: null,
-    redirect: true,
-    getRedirectPath: (userRole) => userRole === ROLES.ADMIN ? ROUTES.DASHBOARD : ROUTES.VEHICLES,
-  },
-  
-  // 404 route
-  {
-    path: '*',
-    element: <NotFoundPage />,
-    layout: (props) => props.userRole === ROLES.ADMIN ? <AdminLayout>{props.children}</AdminLayout> : <DriverLayout>{props.children}</DriverLayout>,
-    roles: [ROLES.ADMIN, ROLES.DRIVER],
-    fallbackRedirect: ROUTES.LOGIN, // Redirect to login if not authenticated
-  },
-];
+// Component to choose layout based on role
+const LayoutSelector = ({ children, userRole }) => {
+  if (userRole === ROLES.ADMIN) {
+    return <AdminLayout>{children}</AdminLayout>;
+  }
+  return <DriverLayout>{children}</DriverLayout>;
+};
 
 /**
  * Unified Routes component that handles all routing
@@ -212,50 +54,237 @@ const AppRoutes = () => {
   return (
     <Suspense fallback={<LoadingFallback />}>
       <Routes>
-        {routeConfig.map((route, index) => {
-          // Special handling for redirect routes
-          if (route.redirect) {
-            return (
-              <Route
-                key={index}
-                path={route.path}
-                element={
-                  <ProtectedRoute
-                    roles={route.roles}
-                    redirectTo={route.redirectTo}
-                    getRedirectPath={route.getRedirectPath}
-                  >
-                    {route.element}
-                  </ProtectedRoute>
-                }
-              />
-            );
+        {/* Login route */}
+        <Route
+          path={ROUTES.LOGIN}
+          element={
+            <ProtectedRoute
+              redirectWhenAuthed={true}
+              redirectTo={ROUTES.DASHBOARD}
+            >
+              <LoginPage />
+            </ProtectedRoute>
           }
-          
-          // Normal route with layout
-          return (
-            <Route
-              key={index}
-              path={route.path}
-              element={
-                <ProtectedRoute
-                  roles={route.roles}
-                  redirectTo={route.redirectTo}
-                  redirectWhenAuthed={route.redirectWhenAuthed}
-                >
-                  {route.layout ? (
-                    React.createElement(route.layout, {
-                      children: route.element,
-                      userRole: route.userRole
-                    })
-                  ) : (
-                    route.element
-                  )}
-                </ProtectedRoute>
-              }
-            />
-          );
-        })}
+        />
+
+        {/* Dashboard route */}
+        <Route
+          path={ROUTES.DASHBOARD}
+          element={
+            <ProtectedRoute
+              roles={[ROLES.ADMIN]}
+              redirectTo={ROUTES.VEHICLES}
+            >
+              <AdminLayout>
+                <Dashboard />
+              </AdminLayout>
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Vehicles routes */}
+        <Route
+          path={ROUTES.VEHICLES}
+          element={
+            <ProtectedRoute roles={[ROLES.ADMIN, ROLES.DRIVER]}>
+              {props => (
+                <LayoutSelector userRole={props.userRole}>
+                  <Vehicles />
+                </LayoutSelector>
+              )}
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path={`${ROUTES.VEHICLES}/:id`}
+          element={
+            <ProtectedRoute roles={[ROLES.ADMIN, ROLES.DRIVER]}>
+              {props => (
+                <LayoutSelector userRole={props.userRole}>
+                  <VehicleDetails />
+                </LayoutSelector>
+              )}
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Driver routes - admin only */}
+        <Route
+          path={ROUTES.DRIVERS}
+          element={
+            <ProtectedRoute roles={[ROLES.ADMIN]} redirectTo={ROUTES.VEHICLES}>
+              <AdminLayout>
+                <Drivers />
+              </AdminLayout>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path={`${ROUTES.DRIVERS}/:id`}
+          element={
+            <ProtectedRoute roles={[ROLES.ADMIN]} redirectTo={ROUTES.VEHICLES}>
+              <AdminLayout>
+                <DriverDetails />
+              </AdminLayout>
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Document routes */}
+        <Route
+          path={ROUTES.DOCUMENTS}
+          element={
+            <ProtectedRoute roles={[ROLES.ADMIN, ROLES.DRIVER]}>
+              {props => (
+                <LayoutSelector userRole={props.userRole}>
+                  <Documents />
+                </LayoutSelector>
+              )}
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Assignment routes - admin only */}
+        <Route
+          path={ROUTES.ASSIGN_VEHICLE}
+          element={
+            <ProtectedRoute roles={[ROLES.ADMIN]} redirectTo={ROUTES.VEHICLES}>
+              <AdminLayout>
+                <Assignments />
+              </AdminLayout>
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Block routes - admin only */}
+        <Route
+          path={ROUTES.BLOCK_VEHICLE}
+          element={
+            <ProtectedRoute roles={[ROLES.ADMIN]} redirectTo={ROUTES.VEHICLES}>
+              <AdminLayout>
+                <Blocks />
+              </AdminLayout>
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Service routes */}
+        <Route
+          path={ROUTES.SERVICE_DUES}
+          element={
+            <ProtectedRoute roles={[ROLES.ADMIN, ROLES.DRIVER]}>
+              {props => (
+                <LayoutSelector userRole={props.userRole}>
+                  <Service />
+                </LayoutSelector>
+              )}
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Vehicle logs route */}
+        <Route
+          path={ROUTES.VEHICLE_LOGS}
+          element={
+            <ProtectedRoute roles={[ROLES.ADMIN, ROLES.DRIVER]}>
+              {props => (
+                <LayoutSelector userRole={props.userRole}>
+                  <VehicleLogs />
+                </LayoutSelector>
+              )}
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Tracking routes */}
+        <Route
+          path={ROUTES.VEHICLE_TRACKING}
+          element={
+            <ProtectedRoute roles={[ROLES.ADMIN, ROLES.DRIVER]}>
+              {props => (
+                <LayoutSelector userRole={props.userRole}>
+                  <Tracking />
+                </LayoutSelector>
+              )}
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Report routes - admin only */}
+        <Route
+          path={ROUTES.REPORTS}
+          element={
+            <ProtectedRoute roles={[ROLES.ADMIN]} redirectTo={ROUTES.VEHICLES}>
+              <AdminLayout>
+                <Reports />
+              </AdminLayout>
+            </ProtectedRoute>
+          }
+        />
+
+        {/* User management routes - admin only */}
+        <Route
+          path={ROUTES.USERS}
+          element={
+            <ProtectedRoute roles={[ROLES.ADMIN]} redirectTo={ROUTES.DASHBOARD}>
+              <AdminLayout>
+                <Users />
+              </AdminLayout>
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Profile route */}
+        <Route
+          path={ROUTES.PROFILE}
+          element={
+            <ProtectedRoute roles={[ROLES.ADMIN, ROLES.DRIVER]}>
+              {props => (
+                <LayoutSelector userRole={props.userRole}>
+                  <Profile />
+                </LayoutSelector>
+              )}
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Settings route - admin only */}
+        <Route
+          path={ROUTES.SETTINGS}
+          element={
+            <ProtectedRoute roles={[ROLES.ADMIN]} redirectTo={ROUTES.VEHICLES}>
+              <AdminLayout>
+                <Settings />
+              </AdminLayout>
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Root route - redirect */}
+        <Route
+          path="/"
+          element={
+            <ProtectedRoute>
+              <Navigate to={ROUTES.DASHBOARD} replace />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 404 route */}
+        <Route
+          path="*"
+          element={
+            <ProtectedRoute roles={[ROLES.ADMIN, ROLES.DRIVER]} redirectTo={ROUTES.LOGIN}>
+              {props => (
+                <LayoutSelector userRole={props.userRole}>
+                  <NotFoundPage />
+                </LayoutSelector>
+              )}
+            </ProtectedRoute>
+          }
+        />
       </Routes>
     </Suspense>
   );

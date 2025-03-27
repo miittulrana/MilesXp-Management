@@ -80,12 +80,17 @@ export const AuthProvider = ({ children }) => {
             });
           }
         }
+        
+        // Always set initialized to true after initial check,
+        // even if there is no session
+        setInitialized(true);
+        setLoading(false);
       } catch (err) {
         console.error('Setup auth error:', err);
         setAuthError(err);
-      } finally {
-        setLoading(false);
+        // Still set initialized to true even on error
         setInitialized(true);
+        setLoading(false);
       }
     };
 
@@ -113,6 +118,8 @@ export const AuthProvider = ({ children }) => {
         }
         
         setLoading(false);
+        // Ensure initialized is set to true
+        setInitialized(true);
       } else if (event === 'SIGNED_OUT') {
         console.log('User signed out');
         setUser(null);
@@ -153,6 +160,7 @@ export const AuthProvider = ({ children }) => {
       if (error) {
         console.error('Login error:', error);
         setAuthError(error);
+        setLoading(false);
         return { success: false, error };
       }
 
@@ -181,13 +189,13 @@ export const AuthProvider = ({ children }) => {
         });
       }
       
+      setLoading(false);
       return { success: true, userRole: details?.role || ROLES.DRIVER };
     } catch (error) {
       console.error("Login error:", error);
       setAuthError(error);
-      return { success: false, error };
-    } finally {
       setLoading(false);
+      return { success: false, error };
     }
   };
 
@@ -221,12 +229,12 @@ export const AuthProvider = ({ children }) => {
       await supabase.auth.signOut();
       setUser(null);
       setUserDetails(null);
+      setLoading(false);
       return { success: true };
     } catch (error) {
       console.error("Logout error:", error);
-      return { success: false, error };
-    } finally {
       setLoading(false);
+      return { success: false, error };
     }
   };
 

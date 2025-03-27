@@ -30,15 +30,6 @@ const ProtectedRoute = ({
     initialized
   });
 
-  // Show loader while checking authentication, but only if not initialized
-  if (!initialized) {
-    return (
-      <div className="protected-route-loader">
-        <Loader size="large" text="Authenticating..." />
-      </div>
-    );
-  }
-
   // Handle redirect when already authenticated (like login page)
   if (redirectWhenAuthed && user) {
     const redirectPath = getRedirectPath ? getRedirectPath(userRole) : redirectTo;
@@ -52,21 +43,13 @@ const ProtectedRoute = ({
     return <Navigate to={ROUTES.LOGIN} state={{ from: location.pathname }} replace />;
   }
 
-  // Handle custom redirect based on user role
-  if (getRedirectPath && user) {
-    const redirectPath = getRedirectPath(userRole);
-    console.log(`[PROTECTED] Role-based redirect to ${redirectPath}`);
-    return <Navigate to={redirectPath} replace />;
-  }
-
-  // Check role-based access
-  if (roles && !roles.includes(userRole)) {
+  // Check role-based access - only if we have userDetails loaded
+  if (roles && user && userDetails && !roles.includes(userRole)) {
     console.log(`[PROTECTED] User role ${userRole} not authorized for this route`);
     return <Navigate to={redirectTo} replace />;
   }
 
-  // If we have a user but loading is still true, show loading indicator
-  // This prevents showing protected content before user details are loaded
+  // If we're still loading user details but we have user, show loading
   if (roles && user && loading && !userDetails) {
     return (
       <div className="protected-route-loader">
@@ -75,18 +58,31 @@ const ProtectedRoute = ({
     );
   }
 
-  // Render children with userRole if it's a function component
-  if (React.isValidElement(children) && children.type && typeof children.type === 'function') {
-    return React.cloneElement(children, { userRole });
+  // Special case for custom redirect
+  if (getRedirectPath && user && userDetails) {
+    const redirectPath = getRedirectPath(userRole);
+    if (redirectPath) {
+      console.log(`[PROTECTED] Role-based redirect to ${redirectPath}`);
+      return <Navigate to={redirectPath} replace />;
+    }
   }
 
   // Render the protected component
   console.log("[PROTECTED] Access granted");
-  return children;
+  
+  // CRITICAL FIX: Properly handle children as function
+  if (typeof children === 'function') {
+    return children({ userRole });
+  }
+  
+  return <>{children}</>;
 };
 
 ProtectedRoute.propTypes = {
-  children: PropTypes.node,
+  children: PropTypes.oneOfType([
+    PropTypes.node,
+    PropTypes.func
+  ]),
   roles: PropTypes.arrayOf(PropTypes.string),
   redirectTo: PropTypes.string,
   redirectWhenAuthed: PropTypes.bool,
