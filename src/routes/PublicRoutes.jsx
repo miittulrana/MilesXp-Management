@@ -2,11 +2,9 @@ import React from 'react';
 import { Route, Routes, Navigate } from 'react-router-dom';
 import { ROUTES, ROLES } from '../lib/constants';
 import { useAuth } from '../hooks/useAuth';
-import Loader from '../components/common/Loader/Loader';
 
 // Lazy load login page
-const LoginPage = React.lazy(() => import('../features/auth/pages/LoginPage'));
-const NotFound = React.lazy(() => import('../features/common/pages/NotFoundPage'));
+const LoginPage = React.lazy(() => import('../features/auth/LoginPage'));
 
 // Loading fallback
 const LoadingFallback = () => {
@@ -24,11 +22,12 @@ const LoadingFallback = () => {
 const PublicRoutes = () => {
   const { user, userDetails, initialized, loading } = useAuth();
 
-  // Show loader while checking authentication
+  // Show simple loading indicator while checking authentication
   if (!initialized || loading) {
     return (
       <div className="public-route-loader">
-        <Loader size="large" text="Loading..." />
+        <div className="loading-spinner"></div>
+        <p>Loading...</p>
       </div>
     );
   }
@@ -59,9 +58,7 @@ const PublicRoutes = () => {
       <Route
         path="*"
         element={
-          <React.Suspense fallback={<LoadingFallback />}>
-            <NotFound />
-          </React.Suspense>
+          <Navigate to={ROUTES.LOGIN} replace />
         }
       />
     </Routes>

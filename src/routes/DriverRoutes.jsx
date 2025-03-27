@@ -1,20 +1,16 @@
 import React from 'react';
-import { Route, Routes } from 'react-router-dom';
+import { Route, Routes, Navigate } from 'react-router-dom';
 import { ROUTES } from '../lib/constants';
 import DriverLayout from '../components/layout/DriverLayout';
 import ProtectedRoute from './ProtectedRoute';
 
-// Lazy load pages to improve initial load time
-const Vehicles = React.lazy(() => import('../features/vehicles/pages/VehiclesPage'));
-const VehicleDetails = React.lazy(() => import('../features/vehicles/pages/VehicleDetailPage'));
-const Documents = React.lazy(() => import('../features/documents/pages/DocumentsPage'));
-const DocumentStatus = React.lazy(() => import('../features/documents/pages/DocumentStatusPage'));
-const ServiceDues = React.lazy(() => import('../features/service-dues/pages/ServiceDuesPage'));
-const VehicleLogs = React.lazy(() => import('../features/logs/pages/LogsPage'));
-const Calendar = React.lazy(() => import('../features/calendar/pages/CalendarPage'));
-const VehicleTracking = React.lazy(() => import('../features/tracking/pages/TrackingPage'));
-const Profile = React.lazy(() => import('../features/auth/pages/ProfilePage'));
-const NotFound = React.lazy(() => import('../features/common/pages/NotFoundPage'));
+// Lazy load pages
+const Vehicles = React.lazy(() => import('../features/vehicles/VehiclesPage'));
+const VehicleDetails = React.lazy(() => import('../features/vehicles/VehicleDetailPage'));
+const Documents = React.lazy(() => import('../features/documents/DocumentsPage'));
+const Service = React.lazy(() => import('../features/service/ServicePage'));
+const Tracking = React.lazy(() => import('../features/tracking/TrackingPage'));
+const Profile = React.lazy(() => import('../features/auth/ProfilePage'));
 
 // Loading fallback
 const LoadingFallback = () => {
@@ -27,13 +23,12 @@ const LoadingFallback = () => {
 
 /**
  * Driver Routes component
- * @returns {JSX.Element} Driver routes component
  */
 const DriverRoutes = () => {
   return (
     <Routes>
       <Route
-        path={ROUTES.DASHBOARD}
+        path="/"
         element={
           <ProtectedRoute>
             <DriverLayout>
@@ -59,7 +54,7 @@ const DriverRoutes = () => {
       />
 
       <Route
-        path={ROUTES.VEHICLE_DETAILS.replace(':id', ':id')}
+        path={`${ROUTES.VEHICLES}/:id`}
         element={
           <ProtectedRoute>
             <DriverLayout>
@@ -85,51 +80,12 @@ const DriverRoutes = () => {
       />
 
       <Route
-        path={ROUTES.DOCUMENT_STATUS}
-        element={
-          <ProtectedRoute>
-            <DriverLayout>
-              <React.Suspense fallback={<LoadingFallback />}>
-                <DocumentStatus />
-              </React.Suspense>
-            </DriverLayout>
-          </ProtectedRoute>
-        }
-      />
-
-      <Route
         path={ROUTES.SERVICE_DUES}
         element={
           <ProtectedRoute>
             <DriverLayout>
               <React.Suspense fallback={<LoadingFallback />}>
-                <ServiceDues />
-              </React.Suspense>
-            </DriverLayout>
-          </ProtectedRoute>
-        }
-      />
-
-      <Route
-        path={ROUTES.VEHICLE_LOGS}
-        element={
-          <ProtectedRoute>
-            <DriverLayout>
-              <React.Suspense fallback={<LoadingFallback />}>
-                <VehicleLogs />
-              </React.Suspense>
-            </DriverLayout>
-          </ProtectedRoute>
-        }
-      />
-
-      <Route
-        path={ROUTES.CALENDAR}
-        element={
-          <ProtectedRoute>
-            <DriverLayout>
-              <React.Suspense fallback={<LoadingFallback />}>
-                <Calendar />
+                <Service />
               </React.Suspense>
             </DriverLayout>
           </ProtectedRoute>
@@ -142,7 +98,7 @@ const DriverRoutes = () => {
           <ProtectedRoute>
             <DriverLayout>
               <React.Suspense fallback={<LoadingFallback />}>
-                <VehicleTracking />
+                <Tracking />
               </React.Suspense>
             </DriverLayout>
           </ProtectedRoute>
@@ -165,11 +121,7 @@ const DriverRoutes = () => {
       <Route
         path="*"
         element={
-          <DriverLayout>
-            <React.Suspense fallback={<LoadingFallback />}>
-              <NotFound />
-            </React.Suspense>
-          </DriverLayout>
+          <Navigate to="/" replace />
         }
       />
     </Routes>

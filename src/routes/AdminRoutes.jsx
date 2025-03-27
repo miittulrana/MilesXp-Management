@@ -1,27 +1,23 @@
 import React from 'react';
-import { Route, Routes } from 'react-router-dom';
+import { Route, Routes, Navigate } from 'react-router-dom';
 import { ROUTES } from '../lib/constants';
 import AdminLayout from '../components/layout/AdminLayout';
 import ProtectedRoute from './ProtectedRoute';
 
-// Lazy load pages to improve initial load time
-const Dashboard = React.lazy(() => import('../features/dashboard/pages/DashboardPage'));
-const Vehicles = React.lazy(() => import('../features/vehicles/pages/VehiclesPage'));
-const VehicleDetails = React.lazy(() => import('../features/vehicles/pages/VehicleDetailPage'));
-const Drivers = React.lazy(() => import('../features/drivers/pages/DriversPage'));
-const DriverDetails = React.lazy(() => import('../features/drivers/pages/DriverDetailPage'));
-const Documents = React.lazy(() => import('../features/documents/pages/DocumentsPage'));
-const DocumentStatus = React.lazy(() => import('../features/documents/pages/DocumentStatusPage'));
-const ServiceDues = React.lazy(() => import('../features/service-dues/pages/ServiceDuesPage'));
-const AssignVehicle = React.lazy(() => import('../features/assignments/pages/AssignmentsPage'));
-const BlockVehicle = React.lazy(() => import('../features/blocks/pages/BlocksPage'));
-const VehicleLogs = React.lazy(() => import('../features/logs/pages/LogsPage'));
-const Calendar = React.lazy(() => import('../features/calendar/pages/CalendarPage'));
-const VehicleTracking = React.lazy(() => import('../features/tracking/pages/TrackingPage'));
-const Reports = React.lazy(() => import('../features/reports/pages/ReportsPage'));
-const Profile = React.lazy(() => import('../features/auth/pages/ProfilePage'));
-const Settings = React.lazy(() => import('../features/settings/pages/SettingsPage'));
-const NotFound = React.lazy(() => import('../features/common/pages/NotFoundPage'));
+// Lazy load pages
+const Dashboard = React.lazy(() => import('../features/dashboard/DashboardPage'));
+const Vehicles = React.lazy(() => import('../features/vehicles/VehiclesPage'));
+const VehicleDetails = React.lazy(() => import('../features/vehicles/VehicleDetailPage'));
+const Drivers = React.lazy(() => import('../features/drivers/DriversPage'));
+const DriverDetails = React.lazy(() => import('../features/drivers/DriverDetailPage'));
+const Documents = React.lazy(() => import('../features/documents/DocumentsPage'));
+const Assignments = React.lazy(() => import('../features/assignments/AssignmentsPage'));
+const Blocks = React.lazy(() => import('../features/blocks/BlocksPage'));
+const Service = React.lazy(() => import('../features/service/ServicePage'));
+const Tracking = React.lazy(() => import('../features/tracking/TrackingPage'));
+const Reports = React.lazy(() => import('../features/reports/ReportsPage'));
+const Profile = React.lazy(() => import('../features/auth/ProfilePage'));
+const Settings = React.lazy(() => import('../features/settings/SettingsPage'));
 
 // Loading fallback
 const LoadingFallback = () => {
@@ -34,13 +30,12 @@ const LoadingFallback = () => {
 
 /**
  * Admin Routes component
- * @returns {JSX.Element} Admin routes component
  */
 const AdminRoutes = () => {
   return (
     <Routes>
       <Route
-        path={ROUTES.DASHBOARD}
+        path="/"
         element={
           <ProtectedRoute adminOnly>
             <AdminLayout>
@@ -66,7 +61,7 @@ const AdminRoutes = () => {
       />
 
       <Route
-        path={ROUTES.VEHICLE_DETAILS.replace(':id', ':id')}
+        path={`${ROUTES.VEHICLES}/:id`}
         element={
           <ProtectedRoute>
             <AdminLayout>
@@ -92,7 +87,7 @@ const AdminRoutes = () => {
       />
 
       <Route
-        path={ROUTES.DRIVER_DETAILS.replace(':id', ':id')}
+        path={`${ROUTES.DRIVERS}/:id`}
         element={
           <ProtectedRoute adminOnly>
             <AdminLayout>
@@ -118,38 +113,12 @@ const AdminRoutes = () => {
       />
 
       <Route
-        path={ROUTES.DOCUMENT_STATUS}
-        element={
-          <ProtectedRoute>
-            <AdminLayout>
-              <React.Suspense fallback={<LoadingFallback />}>
-                <DocumentStatus />
-              </React.Suspense>
-            </AdminLayout>
-          </ProtectedRoute>
-        }
-      />
-
-      <Route
-        path={ROUTES.SERVICE_DUES}
-        element={
-          <ProtectedRoute>
-            <AdminLayout>
-              <React.Suspense fallback={<LoadingFallback />}>
-                <ServiceDues />
-              </React.Suspense>
-            </AdminLayout>
-          </ProtectedRoute>
-        }
-      />
-
-      <Route
         path={ROUTES.ASSIGN_VEHICLE}
         element={
           <ProtectedRoute adminOnly>
             <AdminLayout>
               <React.Suspense fallback={<LoadingFallback />}>
-                <AssignVehicle />
+                <Assignments />
               </React.Suspense>
             </AdminLayout>
           </ProtectedRoute>
@@ -162,7 +131,7 @@ const AdminRoutes = () => {
           <ProtectedRoute adminOnly>
             <AdminLayout>
               <React.Suspense fallback={<LoadingFallback />}>
-                <BlockVehicle />
+                <Blocks />
               </React.Suspense>
             </AdminLayout>
           </ProtectedRoute>
@@ -170,25 +139,12 @@ const AdminRoutes = () => {
       />
 
       <Route
-        path={ROUTES.VEHICLE_LOGS}
+        path={ROUTES.SERVICE_DUES}
         element={
           <ProtectedRoute>
             <AdminLayout>
               <React.Suspense fallback={<LoadingFallback />}>
-                <VehicleLogs />
-              </React.Suspense>
-            </AdminLayout>
-          </ProtectedRoute>
-        }
-      />
-
-      <Route
-        path={ROUTES.CALENDAR}
-        element={
-          <ProtectedRoute>
-            <AdminLayout>
-              <React.Suspense fallback={<LoadingFallback />}>
-                <Calendar />
+                <Service />
               </React.Suspense>
             </AdminLayout>
           </ProtectedRoute>
@@ -201,7 +157,7 @@ const AdminRoutes = () => {
           <ProtectedRoute>
             <AdminLayout>
               <React.Suspense fallback={<LoadingFallback />}>
-                <VehicleTracking />
+                <Tracking />
               </React.Suspense>
             </AdminLayout>
           </ProtectedRoute>
@@ -250,11 +206,7 @@ const AdminRoutes = () => {
       <Route
         path="*"
         element={
-          <AdminLayout>
-            <React.Suspense fallback={<LoadingFallback />}>
-              <NotFound />
-            </React.Suspense>
-          </AdminLayout>
+          <Navigate to="/" replace />
         }
       />
     </Routes>
