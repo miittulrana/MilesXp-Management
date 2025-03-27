@@ -19,7 +19,22 @@ const vehicleService = {
         console.error('Auth error:', authError);
         throw new Error('Authentication required');
       }
+
+      // First try a simpler query without the join to check if basic access works
+      const { data: testData, error: testError } = await supabase
+        .from('vehicles')
+        .select('*')
+        .limit(1);
+        
+      if (testError) {
+        console.error('Basic vehicle query failed:', testError);
+        console.error('Error code:', testError.code);
+        console.error('Error details:', testError.details);
+        console.error('Error hint:', testError.hint);
+        throw new Error(`Database access error: ${testError.message}`);
+      }
       
+      // If basic query worked, proceed with full query
       const { data, error } = await supabase
         .from('vehicles')
         .select(`
@@ -29,13 +44,13 @@ const vehicleService = {
         .order('plate_number');
       
       if (error) {
-        console.error('Error fetching vehicles:', error);
+        console.error('Error fetching vehicles with join:', error);
         throw error;
       }
       
       console.log('Vehicles fetched:', data?.length || 0);
       
-      // Format data for UI
+      // Format data for UI, safely handle null driver
       return data.map(vehicle => ({
         ...vehicle,
         driver_name: vehicle.driver?.name || null
@@ -46,6 +61,7 @@ const vehicleService = {
     }
   },
 
+  // The rest of your vehicleService code remains unchanged
   /**
    * Get vehicle by ID
    * @param {string} id - Vehicle ID

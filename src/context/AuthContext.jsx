@@ -95,6 +95,31 @@ export const AuthProvider = ({ children }) => {
             
             if (details) {
               setUserDetails(details);
+              
+              // ADDED: Try to ensure the user exists in database
+              // Only do this if we got basic details but not from the database
+              if (!details.id || details.id === session.user.id) {
+                console.log('User might not exist in database, trying to create...');
+                try {
+                  const { error: insertError } = await supabase
+                    .from('users')
+                    .insert({
+                      auth_id: session.user.id,
+                      name: session.user.email?.split('@')[0] || 'New User',
+                      email: session.user.email || 'user@example.com',
+                      role: ROLES.ADMIN // Default to admin for simplicity
+                    })
+                    .select();
+                    
+                  if (insertError) {
+                    console.log('User already exists or could not create user:', insertError);
+                  } else {
+                    console.log('User created successfully in database');
+                  }
+                } catch (createErr) {
+                  console.error('Error creating user in database:', createErr);
+                }
+              }
             } else {
               // Fallback to basic details if database fetch fails
               setUserDetails({
@@ -140,6 +165,30 @@ export const AuthProvider = ({ children }) => {
         
         if (details) {
           setUserDetails(details);
+          
+          // ADDED: Try to ensure the user exists in database
+          // Only do this if we got basic details but not from the database
+          if (!details.id || details.id === session.user.id) {
+            console.log('User might not exist in database, trying to create...');
+            try {
+              const { error: insertError } = await supabase
+                .from('users')
+                .insert({
+                  auth_id: session.user.id,
+                  name: session.user.email?.split('@')[0] || 'New User',
+                  email: session.user.email || 'user@example.com',
+                  role: ROLES.ADMIN // Default to admin for simplicity
+                });
+                
+              if (insertError) {
+                console.log('User already exists or could not create user:', insertError);
+              } else {
+                console.log('User created successfully in database');
+              }
+            } catch (createErr) {
+              console.error('Error creating user in database:', createErr);
+            }
+          }
         } else {
           // Fallback to basic details if database fetch fails
           setUserDetails({

@@ -12,12 +12,11 @@ const documentService = {
   getDocuments: async () => {
     try {
       console.log('Fetching documents...');
+      
+      // Get all documents without trying to join - this avoids the foreign key issue
       const { data, error } = await supabase
         .from('documents')
-        .select(`
-          *,
-          vehicle:entity_id(id, plate_number)
-        `)
+        .select('*')
         .order('expiry_date');
       
       if (error) {
@@ -27,6 +26,52 @@ const documentService = {
       
       console.log('Documents fetched:', data?.length || 0);
       
+      // If we have documents, get vehicle data separately to avoid join issues
+      let vehiclesMap = {};
+      let driversMap = {};
+      
+      if (data && data.length > 0) {
+        // Get unique vehicle IDs
+        const vehicleIds = data
+          .filter(doc => doc.entity_type === 'vehicle')
+          .map(doc => doc.entity_id);
+        
+        // Get unique driver IDs
+        const driverIds = data
+          .filter(doc => doc.entity_type === 'driver')
+          .map(doc => doc.entity_id);
+        
+        // Get vehicle data if we have vehicle documents
+        if (vehicleIds.length > 0) {
+          const { data: vehiclesData } = await supabase
+            .from('vehicles')
+            .select('id, plate_number')
+            .in('id', vehicleIds);
+          
+          if (vehiclesData) {
+            vehiclesMap = vehiclesData.reduce((map, vehicle) => {
+              map[vehicle.id] = vehicle;
+              return map;
+            }, {});
+          }
+        }
+        
+        // Get driver data if we have driver documents
+        if (driverIds.length > 0) {
+          const { data: driversData } = await supabase
+            .from('users')
+            .select('id, name')
+            .in('id', driverIds);
+          
+          if (driversData) {
+            driversMap = driversData.reduce((map, driver) => {
+              map[driver.id] = driver;
+              return map;
+            }, {});
+          }
+        }
+      }
+      
       // Process documents to include status based on expiry date
       return data.map(doc => {
         // Calculate status based on expiry date
@@ -34,12 +79,10 @@ const documentService = {
         
         // Determine entity name based on entity type
         let entityName = '';
-        if (doc.entity_type === 'vehicle' && doc.vehicle) {
-          entityName = doc.vehicle.plate_number;
+        if (doc.entity_type === 'vehicle') {
+          entityName = vehiclesMap[doc.entity_id]?.plate_number || `Vehicle ${doc.entity_id}`;
         } else if (doc.entity_type === 'driver') {
-          // We'd need to join with users table to get driver name
-          // For now, just use the entity_id
-          entityName = `Driver ${doc.entity_id}`;
+          entityName = driversMap[doc.entity_id]?.name || `Driver ${doc.entity_id}`;
         }
         
         return {
