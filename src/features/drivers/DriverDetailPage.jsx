@@ -12,9 +12,12 @@ import { CardBody, CardHeader } from '../../components/common/Card/Card';
 import Button from '../../components/common/Button/Button';
 import Loader from '../../components/common/Loader/Loader';
 import Modal from '../../components/common/Modal/Modal';
+import DriverForm from './DriverForm';
+import ConfirmDialog from '../../components/common/Dialog/ConfirmDialog';
+import DataTable from '../../components/common/DataTable/DataTable';
 
 /**
- * Driver Detail Page - Simplified version
+ * Driver Detail Page
  */
 const DriverDetailPage = () => {
   const { id } = useParams();
@@ -22,35 +25,69 @@ const DriverDetailPage = () => {
   const { isAdmin } = useAuth();
   const { showToast, showError } = useToast();
   
+  // Driver data state
   const [driver, setDriver] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [assignments, setAssignments] = useState([]);
+  const [loadingAssignments, setLoadingAssignments] = useState(false);
+  const [documents, setDocuments] = useState([]);
+  const [loadingDocuments, setLoadingDocuments] = useState(false);
+  
+  // UI state
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [newPassword, setNewPassword] = useState('');
+  const [activeTab, setActiveTab] = useState('details'); // details, assignments, documents
 
-  // Fetch driver details
+  // Fetch driver details and related data
   useEffect(() => {
-    const fetchDriverDetails = async () => {
+    const fetchDriverData = async () => {
       try {
         setLoading(true);
+        // Fetch driver details
         const driverData = await driverService.getDriverById(id);
         setDriver(driverData);
+        
+        // Fetch driver assignments
+        setLoadingAssignments(true);
+        try {
+          const assignmentsData = await driverService.getDriverAssignments(id);
+          setAssignments(assignmentsData || []);
+        } catch (assignmentError) {
+          console.error('Error fetching assignments:', assignmentError);
+        } finally {
+          setLoadingAssignments(false);
+        }
+        
+        // Fetch driver documents
+        setLoadingDocuments(true);
+        try {
+          const documentsData = await driverService.getDriverDocuments(id);
+          setDocuments(documentsData || []);
+        } catch (documentError) {
+          console.error('Error fetching documents:', documentError);
+        } finally {
+          setLoadingDocuments(false);
+        }
       } catch (error) {
         console.error('Error fetching driver details:', error);
-        showError('Failed to load driver details');
+        showError('Failed to load driver details: ' + (error.message || ''));
         navigate(ROUTES.DRIVERS);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchDriverDetails();
+    fetchDriverData();
   }, [id, navigate, showError]);
 
   // Handle edit driver
   const handleEditDriver = async (driverData) => {
     try {
-      setLoading(true);
+      setIsSubmitting(true);
       await driverService.updateDriver(id, driverData);
       showToast('Driver updated successfully', 'success');
       setIsEditModalOpen(false);
@@ -62,7 +99,7 @@ const DriverDetailPage = () => {
       console.error('Error updating driver:', error);
       showError(error.message || 'Failed to update driver');
     } finally {
-      setLoading(false);
+      setIsSubmitting(false);
     }
   };
 
@@ -71,9 +108,13 @@ const DriverDetailPage = () => {
     try {
       setLoading(true);
       const result = await driverService.resetPassword(id);
-      setNewPassword(result.newPassword);
-      setIsPasswordModalOpen(true);
-      showToast('Password reset successfully', 'success');
+      
+      if (result.isEmail) {
+        showToast('Password reset email sent to driver', 'success');
+      } else if (result.newPassword) {
+        setNewPassword(result.newPassword);
+        setIsPasswordModalOpen(true);
+      }
     } catch (error) {
       console.error('Error resetting password:', error);
       showError(error.message || 'Failed to reset password');
@@ -84,20 +125,17 @@ const DriverDetailPage = () => {
 
   // Handle delete driver
   const handleDeleteDriver = async () => {
-    if (!window.confirm(`Are you sure you want to delete ${driver?.name}?`)) {
-      return;
-    }
-    
     try {
-      setLoading(true);
+      setIsDeleting(true);
       await driverService.deleteDriver(id);
       showToast('Driver deleted successfully', 'success');
+      setIsDeleteDialogOpen(false);
       navigate(ROUTES.DRIVERS);
     } catch (error) {
       console.error('Error deleting driver:', error);
       showError(error.message || 'Failed to delete driver');
     } finally {
-      setLoading(false);
+      setIsDeleting(false);
     }
   };
 
@@ -112,90 +150,196 @@ const DriverDetailPage = () => {
     showToast('Password copied to clipboard', 'info');
   };
 
+  // Assignments table columns
+  const assignmentColumns = [
+    {
+      field: 'start_date',
+      title: 'Start Date',
+      render: (value) => formatDate(value)
+    },
+    {
+      field: 'end_date',
+      title: 'End Date',
+      render: (value) => value ? formatDate(value) : 'Active'
+    },
+    {
+      field: 'vehicle',
+      title: 'Vehicle',
+      render: (value) => value ? `${value.plate_number} (${value.model})` : '-'
+    },
+    {
+      field: 'status',
+      title: 'Status',
+      render: (value) => (
+        <span className={`status-badge ${value}`}>
+          {value}
+        </span>
+      )
+    }
+  ];
+
+  // Documents table columns
+  const documentColumns = [
+    {
+      field: 'name',
+      title: 'Document Name'
+    },
+    {
+      field: 'type',
+      title: 'Type'
+    },
+    {
+      field: 'issue_date',
+      title: 'Issue Date',
+      render: (value) => formatDate(value)
+    },
+    {
+      field: 'expiry_date',
+      title: 'Expiry Date',
+      render: (value) => formatDate(value)
+    },
+    {
+      field: 'status',
+      title: 'Status',
+      render: (value) => (
+        <span className={`status-badge ${value}`}>
+          {value}
+        </span>
+      )
+    }
+  ];
+
   if (loading && !driver) {
     return (
-      <div className="page-loading">
+      <div className="flex justify-center items-center min-h-[500px]">
         <Loader size="large" text="Loading driver details..." />
       </div>
     );
   }
 
   return (
-    <div className="driver-detail-page">
-      <div className="page-header">
+    <div className="driver-detail-page p-4">
+      <div className="flex items-center gap-4 mb-6">
         <Button 
           variant="outline" 
           onClick={handleBackClick}
         >
           Back to Drivers
         </Button>
-        <h1>{driver?.name}</h1>
+        <h1 className="text-2xl font-semibold text-primary m-0">{driver?.name || 'Driver Details'}</h1>
       </div>
 
-      {driver && (
-        <div className="driver-detail-content">
+      <div className="tab-navigation flex border-b mb-6">
+        <button 
+          className={`px-4 py-2 ${activeTab === 'details' ? 'border-b-2 border-primary-500 font-semibold' : 'text-gray-500'}`}
+          onClick={() => setActiveTab('details')}
+        >
+          Details
+        </button>
+        <button 
+          className={`px-4 py-2 ${activeTab === 'assignments' ? 'border-b-2 border-primary-500 font-semibold' : 'text-gray-500'}`}
+          onClick={() => setActiveTab('assignments')}
+        >
+          Vehicle Assignments
+        </button>
+        <button 
+          className={`px-4 py-2 ${activeTab === 'documents' ? 'border-b-2 border-primary-500 font-semibold' : 'text-gray-500'}`}
+          onClick={() => setActiveTab('documents')}
+        >
+          Documents
+        </button>
+      </div>
+
+      {activeTab === 'details' && driver && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Driver Information Card */}
           <Card>
             <CardHeader title="Driver Information" />
             <CardBody>
-              <div className="info-grid">
-                <div className="info-item">
-                  <div className="info-label">Name</div>
-                  <div className="info-value">{driver.name}</div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <div className="text-sm text-gray-500 mb-1">Name</div>
+                  <div className="font-medium">{driver.name}</div>
                 </div>
                 
-                <div className="info-item">
-                  <div className="info-label">Email</div>
-                  <div className="info-value">{driver.email}</div>
+                <div>
+                  <div className="text-sm text-gray-500 mb-1">Email</div>
+                  <div className="font-medium">{driver.email}</div>
                 </div>
                 
-                <div className="info-item">
-                  <div className="info-label">Phone</div>
-                  <div className="info-value">{driver.phone || '-'}</div>
+                <div>
+                  <div className="text-sm text-gray-500 mb-1">Phone</div>
+                  <div className="font-medium">{driver.phone || '-'}</div>
                 </div>
                 
-                <div className="info-item">
-                  <div className="info-label">Role</div>
-                  <div className="info-value">
+                <div>
+                  <div className="text-sm text-gray-500 mb-1">Role</div>
+                  <div className="font-medium">
                     <span className="role-badge">
                       {driver.role}
                     </span>
                   </div>
                 </div>
                 
-                <div className="info-item">
-                  <div className="info-label">Created At</div>
-                  <div className="info-value">{formatDate(driver.created_at)}</div>
+                <div>
+                  <div className="text-sm text-gray-500 mb-1">Created At</div>
+                  <div className="font-medium">{formatDate(driver.created_at)}</div>
                 </div>
                 
-                <div className="info-item">
-                  <div className="info-label">Updated At</div>
-                  <div className="info-value">{formatDate(driver.updated_at)}</div>
+                <div>
+                  <div className="text-sm text-gray-500 mb-1">Updated At</div>
+                  <div className="font-medium">{formatDate(driver.updated_at)}</div>
                 </div>
               </div>
             </CardBody>
           </Card>
 
           {/* Vehicle Information Card (if assigned) */}
-          {driver.assigned_vehicle && (
-            <Card className="card-section">
-              <CardHeader title="Assigned Vehicle" />
-              <CardBody>
-                <div className="info-grid">
-                  <div className="info-item">
-                    <div className="info-label">Vehicle</div>
-                    <div className="info-value">{driver.assigned_vehicle}</div>
+          <Card>
+            <CardHeader title="Current Vehicle Assignment" />
+            <CardBody>
+              {driver.assigned_vehicle ? (
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <div className="text-sm text-gray-500 mb-1">Vehicle</div>
+                    <div className="font-medium">{driver.assigned_vehicle}</div>
+                  </div>
+                  
+                  {driver.vehicles && driver.vehicles.length > 0 && (
+                    <>
+                      <div>
+                        <div className="text-sm text-gray-500 mb-1">Model</div>
+                        <div className="font-medium">{driver.vehicles[0].model}</div>
+                      </div>
+                      
+                      <div>
+                        <div className="text-sm text-gray-500 mb-1">Year</div>
+                        <div className="font-medium">{driver.vehicles[0].year}</div>
+                      </div>
+                    </>
+                  )}
+                  
+                  <div className="col-span-2 mt-2">
+                    <Button
+                      variant="outline"
+                      size="small"
+                      onClick={() => navigate(`${ROUTES.VEHICLES}/${driver.assigned_vehicle_id}`)}
+                    >
+                      View Vehicle Details
+                    </Button>
                   </div>
                 </div>
-              </CardBody>
-            </Card>
-          )}
+              ) : (
+                <div className="text-gray-500 italic">No vehicle currently assigned to this driver.</div>
+              )}
+            </CardBody>
+          </Card>
 
           {/* Actions Card */}
-          <Card className="card-section">
+          <Card className="lg:col-span-2">
             <CardHeader title="Actions" />
             <CardBody>
-              <div className="actions-grid">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                 <Button 
                   variant="primary" 
                   onClick={() => setIsEditModalOpen(true)}
@@ -230,7 +374,7 @@ const DriverDetailPage = () => {
                 {isAdmin() && (
                   <Button 
                     variant="danger" 
-                    onClick={handleDeleteDriver}
+                    onClick={() => setIsDeleteDialogOpen(true)}
                   >
                     Delete Driver
                   </Button>
@@ -241,31 +385,81 @@ const DriverDetailPage = () => {
         </div>
       )}
 
-      {/* Edit Modal - Simplified */}
+      {activeTab === 'assignments' && (
+        <Card>
+          <CardHeader title="Vehicle Assignment History" />
+          <CardBody>
+            {loadingAssignments ? (
+              <div className="flex justify-center py-8">
+                <Loader size="medium" text="Loading assignments..." />
+              </div>
+            ) : (
+              <DataTable
+                data={assignments}
+                columns={assignmentColumns}
+                pagination={true}
+                pageSize={10}
+                emptyMessage="No assignment history found"
+                sortable={true}
+                defaultSortField="start_date"
+                defaultSortDirection="desc"
+              />
+            )}
+          </CardBody>
+        </Card>
+      )}
+
+      {activeTab === 'documents' && (
+        <Card>
+          <CardHeader 
+            title="Driver Documents" 
+            action={
+              <Button
+                variant="primary"
+                size="small"
+                onClick={() => navigate(`${ROUTES.DOCUMENTS}?entityType=driver&entityId=${id}`)}
+              >
+                Manage Documents
+              </Button>
+            }
+          />
+          <CardBody>
+            {loadingDocuments ? (
+              <div className="flex justify-center py-8">
+                <Loader size="medium" text="Loading documents..." />
+              </div>
+            ) : (
+              <DataTable
+                data={documents}
+                columns={documentColumns}
+                pagination={true}
+                pageSize={10}
+                emptyMessage="No documents found"
+                sortable={true}
+                defaultSortField="expiry_date"
+              />
+            )}
+          </CardBody>
+        </Card>
+      )}
+
+      {/* Edit Driver Modal */}
       <Modal
         isOpen={isEditModalOpen}
-        onClose={() => setIsEditModalOpen(false)}
+        onClose={() => !isSubmitting && setIsEditModalOpen(false)}
         title="Edit Driver"
       >
-        <div className="form-container">
-          <p>Driver edit form would go here. This is a simplified version.</p>
-          <div className="form-actions">
-            <Button 
-              variant="outline" 
-              onClick={() => setIsEditModalOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button 
-              variant="primary" 
-              onClick={() => handleEditDriver({
-                name: driver?.name,
-                phone: driver?.phone
-              })}
-            >
-              Update Driver
-            </Button>
-          </div>
+        <div className="p-4">
+          {driver && (
+            <DriverForm
+              initialValues={driver}
+              onSubmit={handleEditDriver}
+              onCancel={() => setIsEditModalOpen(false)}
+              isSubmitting={isSubmitting}
+              submitLabel="Update Driver"
+              isEditMode={true}
+            />
+          )}
         </div>
       </Modal>
 
@@ -273,19 +467,19 @@ const DriverDetailPage = () => {
       <Modal
         isOpen={isPasswordModalOpen}
         onClose={() => setIsPasswordModalOpen(false)}
-        title="Password Reset"
+        title="New Password"
       >
-        <div className="password-container">
-          <div className="password-header">
-            <h3>New Password Generated</h3>
+        <div className="p-4">
+          <div className="password-header mb-4">
+            <h3 className="mb-2">New Password Generated</h3>
             <p>Password for {driver?.name} has been reset to:</p>
           </div>
           
-          <div className="password-display">
+          <div className="bg-gray-100 p-3 rounded border mb-4 font-mono text-center break-all">
             {newPassword}
           </div>
           
-          <p className="password-notice">
+          <p className="text-sm text-gray-500 mb-4">
             This password will only be shown once. Please save it or share it with the driver.
           </p>
           
@@ -299,129 +493,67 @@ const DriverDetailPage = () => {
         </div>
       </Modal>
       
+      {/* Delete Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={isDeleteDialogOpen}
+        onClose={() => setIsDeleteDialogOpen(false)}
+        onConfirm={handleDeleteDriver}
+        title="Delete Driver"
+        message={`Are you sure you want to delete driver ${driver?.name}? This action cannot be undone.`}
+        confirmLabel="Delete"
+        confirmVariant="danger"
+        isLoading={isDeleting}
+      />
+      
       <style jsx>{`
-        .driver-detail-page {
-          padding: var(--spacing-md);
-        }
-        
-        .page-header {
-          display: flex;
-          align-items: center;
-          gap: var(--spacing-md);
-          margin-bottom: var(--spacing-lg);
-        }
-        
-        .page-header h1 {
-          margin-bottom: 0;
-          font-size: var(--font-size-2xl);
+        .role-badge {
+          display: inline-block;
+          padding: 0.25rem 0.75rem;
+          border-radius: 9999px;
+          font-size: 0.75rem;
+          font-weight: 500;
+          text-transform: capitalize;
+          background-color: rgba(0, 77, 153, 0.1);
           color: var(--primary-color);
         }
         
-        .driver-detail-content {
-          display: flex;
-          flex-direction: column;
-          gap: var(--spacing-md);
-        }
-        
-        .card-section {
-          margin-top: var(--spacing-md);
-        }
-        
-        .info-grid {
-          display: grid;
-          grid-template-columns: repeat(2, 1fr);
-          gap: var(--spacing-md);
-        }
-        
-        .info-item {
-          padding-bottom: var(--spacing-sm);
-        }
-        
-        .info-label {
-          font-size: var(--font-size-sm);
-          color: var(--text-secondary);
-          margin-bottom: 0.25rem;
-        }
-        
-        .info-value {
-          font-weight: 500;
-        }
-        
-        .role-badge {
+        .status-badge {
           display: inline-block;
-          padding: 4px 8px;
+          padding: 0.25rem 0.5rem;
           border-radius: 4px;
-          font-size: 12px;
-          font-weight: 600;
-          background-color: rgba(0, 123, 255, 0.1);
-          color: #007bff;
+          font-size: 0.75rem;
+          font-weight: 500;
           text-transform: capitalize;
         }
         
-        .actions-grid {
-          display: grid;
-          grid-template-columns: repeat(2, 1fr);
-          gap: var(--spacing-md);
+        .status-badge.active {
+          background-color: rgba(40, 167, 69, 0.1);
+          color: #28a745;
         }
         
-        .form-container {
-          padding: 16px;
+        .status-badge.completed {
+          background-color: rgba(108, 117, 125, 0.1);
+          color: #6c757d;
         }
         
-        .form-actions {
-          display: flex;
-          justify-content: flex-end;
-          gap: 8px;
-          margin-top: 16px;
+        .status-badge.cancelled {
+          background-color: rgba(220, 53, 69, 0.1);
+          color: #dc3545;
         }
         
-        .page-loading {
-          display: flex;
-          justify-content: center;
-          align-items: center;
-          min-height: 400px;
+        .status-badge.valid {
+          background-color: rgba(40, 167, 69, 0.1);
+          color: #28a745;
         }
         
-        .password-container {
-          padding: 16px;
-          text-align: center;
+        .status-badge.expiring_soon {
+          background-color: rgba(255, 193, 7, 0.1);
+          color: #ffc107;
         }
         
-        .password-header {
-          margin-bottom: 16px;
-        }
-        
-        .password-header h3 {
-          margin-bottom: 8px;
-          color: var(--primary-color);
-        }
-        
-        .password-display {
-          background-color: var(--surface-color);
-          border: 1px solid var(--border-color);
-          border-radius: 4px;
-          padding: 12px;
-          margin: 16px 0;
-          font-family: monospace;
-          font-size: 18px;
-          word-break: break-all;
-          font-weight: 600;
-        }
-        
-        .password-notice {
-          margin-bottom: 16px;
-          color: var(--text-secondary);
-          font-size: 14px;
-        }
-        
-        @media (max-width: 768px) {
-          .info-grid {
-            grid-template-columns: 1fr;
-          }
-          
-          .actions-grid {
-            grid-template-columns: 1fr;
-          }
+        .status-badge.expired {
+          background-color: rgba(220, 53, 69, 0.1);
+          color: #dc3545;
         }
       `}</style>
     </div>

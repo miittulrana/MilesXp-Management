@@ -16,16 +16,16 @@ const userService = {
       const { data, error } = await supabase
         .from('users')
         .select('*')
-        .order('role', { ascending: false })
+        .order('role', { ascending: false }) // Admins first
         .order('name');
       
       if (error) {
         console.error('Error fetching users:', error);
-        throw error;
+        throw new Error(error.message || 'Failed to fetch users');
       }
       
       console.log('Users fetched:', data?.length || 0);
-      return data;
+      return data || [];
     } catch (error) {
       console.error('Exception in getUsers:', error);
       throw error;
@@ -48,26 +48,13 @@ const userService = {
       
       if (error) {
         console.error(`Error fetching users with role ${role}:`, error);
-        throw error;
+        throw new Error(error.message || `Failed to fetch users with role ${role}`);
       }
       
       console.log(`Users with role ${role} fetched:`, data?.length || 0);
-      return data;
+      return data || [];
     } catch (error) {
       console.error(`Exception in getUsersByRole:`, error);
-      throw error;
-    }
-  },
-
-  /**
-   * Get admin users
-   * @returns {Promise<Array>} List of admin users
-   */
-  getAdmins: async () => {
-    try {
-      return await userService.getUsersByRole(ROLES.ADMIN);
-    } catch (error) {
-      console.error('Exception in getAdmins:', error);
       throw error;
     }
   },
@@ -88,7 +75,7 @@ const userService = {
       
       if (error) {
         console.error('Error fetching user details:', error);
-        throw error;
+        throw new Error(error.message || 'User not found');
       }
       
       console.log('User details fetched:', data?.id);
@@ -100,48 +87,26 @@ const userService = {
   },
 
   /**
-   * Get user by auth ID
-   * @param {string} authId - Auth ID
-   * @returns {Promise<Object>} User details
-   */
-  getUserByAuthId: async (authId) => {
-    try {
-      console.log('Fetching user details for auth ID:', authId);
-      const { data, error } = await supabase
-        .from('users')
-        .select('*')
-        .eq('auth_id', authId)
-        .single();
-      
-      if (error) {
-        console.error('Error fetching user details by auth ID:', error);
-        throw error;
-      }
-      
-      console.log('User details fetched by auth ID:', data?.id);
-      return data;
-    } catch (error) {
-      console.error(`Exception in getUserByAuthId:`, error);
-      throw error;
-    }
-  },
-
-  /**
    * Add a new user
    * @param {Object} userData - User data
-   * @returns {Promise<Object>} Created user
+   * @returns {Promise<Object>} Created user with password
    */
   addUser: async (userData) => {
     try {
       console.log('Adding new user:', userData);
+      
+      // Ensure required fields
+      if (!userData.name || !userData.email) {
+        throw new Error('Name and email are required');
+      }
       
       // Validate the role
       if (!Object.values(ROLES).includes(userData.role)) {
         throw new Error(`Invalid role: ${userData.role}`);
       }
       
-      // Generate a password if none is provided
-      const password = userData.password || generatePassword(10);
+      // Generate a secure password
+      const password = userData.password || generatePassword(12);
       
       // Create auth user first
       const { data: authData, error: authError } = await supabase.auth.signUp({
@@ -157,16 +122,16 @@ const userService = {
       
       if (authError) {
         console.error('Error creating auth user:', authError);
-        throw authError;
+        throw new Error(authError.message || 'Failed to create user account');
       }
       
       if (!authData?.user) {
-        throw new Error('Auth user creation failed');
+        throw new Error('Auth user creation failed - no user returned');
       }
       
       console.log('Auth user created:', authData.user.id);
       
-      // Create user record
+      // Create user record in our database
       const { data, error } = await supabase
         .from('users')
         .insert({
@@ -181,39 +146,22 @@ const userService = {
       if (error) {
         console.error('Error creating user record:', error);
         
-        // Clean up auth user if user table insert fails
+        // Attempt to clean up auth user if user table insert fails
         try {
           await supabase.auth.admin.deleteUser(authData.user.id);
         } catch (cleanupError) {
           console.error('Error cleaning up auth user:', cleanupError);
         }
         
-        throw error;
+        throw new Error(error.message || 'Failed to create user record');
       }
       
       console.log('User record created:', data[0]?.id);
       
-      // Return the created user with the generated password
+      // Return the created user with the generated password for displaying to admin
       return { ...data[0], password };
     } catch (error) {
       console.error('Exception in addUser:', error);
-      throw error;
-    }
-  },
-
-  /**
-   * Add a new admin user
-   * @param {Object} userData - User data
-   * @returns {Promise<Object>} Created admin user
-   */
-  addAdmin: async (userData) => {
-    try {
-      return await userService.addUser({
-        ...userData,
-        role: ROLES.ADMIN
-      });
-    } catch (error) {
-      console.error('Exception in addAdmin:', error);
       throw error;
     }
   },
@@ -228,7 +176,7 @@ const userService = {
     try {
       console.log('Updating user ID:', id, userData);
       
-      // Prepare update data
+      // Create update object with only provided fields
       const updateData = {};
       if (userData.name !== undefined) updateData.name = userData.name;
       if (userData.phone !== undefined) updateData.phone = userData.phone;
@@ -249,7 +197,7 @@ const userService = {
       
       if (error) {
         console.error('Error updating user:', error);
-        throw error;
+        throw new Error(error.message || 'Failed to update user');
       }
       
       console.log('User updated successfully:', data[0]?.id);
@@ -269,20 +217,34 @@ const userService = {
     try {
       console.log('Deleting user ID:', id);
       
-      // First get the auth_id
+      // First get the auth_id and check that user exists
       const { data: userData, error: fetchError } = await supabase
         .from('users')
-        .select('auth_id')
+        .select('auth_id, role')
         .eq('id', id)
         .single();
       
       if (fetchError) {
         console.error('Error fetching user auth_id:', fetchError);
-        throw fetchError;
+        throw new Error(fetchError.message || 'User not found');
       }
       
       if (!userData?.auth_id) {
         throw new Error('User auth_id not found');
+      }
+      
+      // Check for related records if this is a driver
+      if (userData.role === ROLES.DRIVER) {
+        // Check if driver has assigned vehicles
+        const { data: vehicles, error: vehiclesError } = await supabase
+          .from('vehicles')
+          .select('id')
+          .eq('assigned_to', id)
+          .limit(1);
+          
+        if (!vehiclesError && vehicles && vehicles.length > 0) {
+          throw new Error('Cannot delete driver with assigned vehicles. Please unassign all vehicles first.');
+        }
       }
       
       // Delete the user from the users table
@@ -293,11 +255,10 @@ const userService = {
       
       if (deleteError) {
         console.error('Error deleting user from users table:', deleteError);
-        throw deleteError;
+        throw new Error(deleteError.message || 'Failed to delete user record');
       }
       
-      // Also delete the auth user if possible
-      // Note: This might require admin rights which might not be available in client-side
+      // Try to delete the auth user (might need admin rights)
       try {
         const { error: authDeleteError } = await supabase.auth.admin.deleteUser(userData.auth_id);
         if (authDeleteError) {
@@ -325,36 +286,42 @@ const userService = {
     try {
       console.log('Resetting password for user ID:', id);
       
-      // First get the auth_id
+      // First get the auth_id and email
       const { data: userData, error: fetchError } = await supabase
         .from('users')
-        .select('auth_id, email')
+        .select('auth_id, email, name')
         .eq('id', id)
         .single();
       
       if (fetchError) {
         console.error('Error fetching user auth_id:', fetchError);
-        throw fetchError;
+        throw new Error(fetchError.message || 'User not found');
       }
       
       if (!userData?.auth_id) {
         throw new Error('User auth_id not found');
       }
       
-      // Generate a new password
+      // Generate a new secure password
       const newPassword = generatePassword(12);
       
-      // Reset the password (this is typically an admin function and might not work client-side)
+      let success = false;
+      
+      // Try to update the password directly first
       try {
-        // Try the admin API first
+        // Try the admin API to update password
         const { error: updateError } = await supabase.auth.admin.updateUserById(
           userData.auth_id,
           { password: newPassword }
         );
         
-        if (updateError) throw updateError;
+        if (updateError) {
+          throw updateError;
+        }
+        
+        success = true;
       } catch (adminUpdateError) {
-        console.warn('Admin password reset failed, trying password recovery:', adminUpdateError);
+        console.warn('Admin password reset failed, trying password recovery email:', adminUpdateError);
         
         // Fallback to password recovery email
         const { error: recoveryError } = await supabase.auth.resetPasswordForEmail(
@@ -366,169 +333,25 @@ const userService = {
         
         if (recoveryError) {
           console.error('Password recovery email failed:', recoveryError);
-          throw recoveryError;
+          throw new Error(recoveryError.message || 'Failed to reset password');
         }
         
         return { 
           success: true, 
           message: 'Password reset email sent to user',
-          isEmail: true 
+          isEmail: true,
+          userName: userData.name 
         };
       }
       
       console.log('Password reset successfully');
-      return { success: true, newPassword };
+      return { 
+        success, 
+        newPassword, 
+        userName: userData.name 
+      };
     } catch (error) {
       console.error(`Exception in resetPassword:`, error);
-      throw error;
-    }
-  },
-
-  /**
-   * Change user role
-   * @param {string} id - User ID
-   * @param {string} role - New role
-   * @returns {Promise<Object>} Updated user
-   */
-  changeUserRole: async (id, role) => {
-    try {
-      console.log(`Changing role for user ${id} to ${role}`);
-      
-      // Validate the role
-      if (!Object.values(ROLES).includes(role)) {
-        throw new Error(`Invalid role: ${role}`);
-      }
-      
-      // Update the user record
-      const { data, error } = await supabase
-        .from('users')
-        .update({
-          role
-        })
-        .eq('id', id)
-        .select();
-      
-      if (error) {
-        console.error('Error changing user role:', error);
-        throw error;
-      }
-      
-      console.log('User role updated successfully:', data[0]?.id);
-      return data[0];
-    } catch (error) {
-      console.error(`Exception in changeUserRole:`, error);
-      throw error;
-    }
-  },
-
-  /**
-   * Get user's activity
-   * @param {string} userId - User ID
-   * @returns {Promise<Object>} User activity statistics
-   */
-  getUserActivity: async (userId) => {
-    try {
-      console.log(`Fetching activity for user ${userId}`);
-      
-      // Get user details first
-      const { data: user, error: userError } = await supabase
-        .from('users')
-        .select('role')
-        .eq('id', userId)
-        .single();
-      
-      if (userError) {
-        console.error('Error fetching user details:', userError);
-        throw userError;
-      }
-      
-      const activity = {
-        user_id: userId,
-        role: user.role,
-        assignments: [],
-        blocks: [],
-        documents: [],
-        last_login: null
-      };
-      
-      // For admin users, get blocks and assignments they've created
-      if (user.role === ROLES.ADMIN) {
-        // Get assignments created by this admin
-        const { data: assignments, error: assignmentsError } = await supabase
-          .from('vehicle_assignments')
-          .select(`
-            id,
-            vehicle_id,
-            driver_id,
-            start_date,
-            end_date,
-            status
-          `)
-          .eq('assigned_by', userId)
-          .order('created_at', { ascending: false })
-          .limit(10);
-        
-        if (!assignmentsError) {
-          activity.assignments = assignments || [];
-        }
-        
-        // Get blocks created by this admin
-        const { data: blocks, error: blocksError } = await supabase
-          .from('vehicle_blocks')
-          .select(`
-            id,
-            vehicle_id,
-            start_date,
-            end_date,
-            reason,
-            status
-          `)
-          .eq('blocked_by', userId)
-          .order('created_at', { ascending: false })
-          .limit(10);
-        
-        if (!blocksError) {
-          activity.blocks = blocks || [];
-        }
-      }
-      
-      // For driver users, get their assignments
-      if (user.role === ROLES.DRIVER) {
-        // Get assignments for this driver
-        const { data: assignments, error: assignmentsError } = await supabase
-          .from('vehicle_assignments')
-          .select(`
-            id,
-            vehicle_id,
-            start_date,
-            end_date,
-            status
-          `)
-          .eq('driver_id', userId)
-          .order('created_at', { ascending: false })
-          .limit(10);
-        
-        if (!assignmentsError) {
-          activity.assignments = assignments || [];
-        }
-      }
-      
-      // Get documents for this user
-      const { data: documents, error: documentsError } = await supabase
-        .from('documents')
-        .select('*')
-        .eq('entity_type', user.role === ROLES.DRIVER ? 'driver' : 'admin')
-        .eq('entity_id', userId)
-        .order('created_at', { ascending: false })
-        .limit(10);
-      
-      if (!documentsError) {
-        activity.documents = documents || [];
-      }
-      
-      return activity;
-    } catch (error) {
-      console.error(`Exception in getUserActivity:`, error);
       throw error;
     }
   }

@@ -5,7 +5,7 @@ import supabase from '../../lib/supabase';
  */
 const vehicleService = {
   /**
-   * Get all vehicles
+   * Get all vehicles with driver information
    * @returns {Promise<Array>} List of vehicles
    */
   getVehicles: async () => {
@@ -20,21 +20,7 @@ const vehicleService = {
         throw new Error('Authentication required');
       }
 
-      // First try a simpler query without the join to check if basic access works
-      const { data: testData, error: testError } = await supabase
-        .from('vehicles')
-        .select('*')
-        .limit(1);
-        
-      if (testError) {
-        console.error('Basic vehicle query failed:', testError);
-        console.error('Error code:', testError.code);
-        console.error('Error details:', testError.details);
-        console.error('Error hint:', testError.hint);
-        throw new Error(`Database access error: ${testError.message}`);
-      }
-      
-      // If basic query worked, proceed with full query
+      // Get vehicles with driver information
       const { data, error } = await supabase
         .from('vehicles')
         .select(`
@@ -44,8 +30,8 @@ const vehicleService = {
         .order('plate_number');
       
       if (error) {
-        console.error('Error fetching vehicles with join:', error);
-        throw error;
+        console.error('Error fetching vehicles:', error);
+        throw new Error(error.message || 'Failed to fetch vehicles');
       }
       
       console.log('Vehicles fetched:', data?.length || 0);
@@ -53,7 +39,9 @@ const vehicleService = {
       // Format data for UI, safely handle null driver
       return data.map(vehicle => ({
         ...vehicle,
-        driver_name: vehicle.driver?.name || null
+        driver_name: vehicle.driver?.name || null,
+        driver_email: vehicle.driver?.email || null,
+        driver_phone: vehicle.driver?.phone || null
       }));
     } catch (error) {
       console.error('Exception in getVehicles:', error);
@@ -61,9 +49,8 @@ const vehicleService = {
     }
   },
 
-  // The rest of your vehicleService code remains unchanged
   /**
-   * Get vehicle by ID
+   * Get vehicle by ID with driver details
    * @param {string} id - Vehicle ID
    * @returns {Promise<Object>} Vehicle details
    */
@@ -90,7 +77,7 @@ const vehicleService = {
       
       if (error) {
         console.error('Error fetching vehicle details:', error);
-        throw error;
+        throw new Error(error.message || 'Vehicle not found');
       }
       
       console.log('Vehicle details fetched:', data?.id);
@@ -100,89 +87,11 @@ const vehicleService = {
         ...data,
         driver_name: data.driver?.name || null,
         driver_email: data.driver?.email || null,
-        driver_phone: data.driver?.phone || null
+        driver_phone: data.driver?.phone || null,
+        driver_id: data.assigned_to || null  // Add driver_id for our form
       };
     } catch (error) {
       console.error(`Exception in getVehicleById:`, error);
-      throw error;
-    }
-  },
-
-  /**
-   * Get vehicles by status
-   * @param {string} status - Vehicle status
-   * @returns {Promise<Array>} List of vehicles with specified status
-   */
-  getVehiclesByStatus: async (status) => {
-    try {
-      console.log(`Fetching vehicles with status: ${status}`);
-      
-      // Check authentication
-      const { data: authData, error: authError } = await supabase.auth.getSession();
-      
-      if (authError || !authData.session) {
-        console.error('Auth error:', authError);
-        throw new Error('Authentication required');
-      }
-      
-      const { data, error } = await supabase
-        .from('vehicles')
-        .select(`
-          *,
-          driver:assigned_to(id, name, email, phone)
-        `)
-        .eq('status', status)
-        .order('plate_number');
-      
-      if (error) {
-        console.error(`Error fetching vehicles with status ${status}:`, error);
-        throw error;
-      }
-      
-      console.log(`Vehicles with status ${status} fetched:`, data?.length || 0);
-      
-      // Format data for UI
-      return data.map(vehicle => ({
-        ...vehicle,
-        driver_name: vehicle.driver?.name || null
-      }));
-    } catch (error) {
-      console.error(`Exception in getVehiclesByStatus:`, error);
-      throw error;
-    }
-  },
-
-  /**
-   * Get available vehicles (not assigned or blocked)
-   * @returns {Promise<Array>} List of available vehicles
-   */
-  getAvailableVehicles: async () => {
-    try {
-      console.log('Fetching available vehicles');
-      
-      // Check authentication
-      const { data: authData, error: authError } = await supabase.auth.getSession();
-      
-      if (authError || !authData.session) {
-        console.error('Auth error:', authError);
-        throw new Error('Authentication required');
-      }
-      
-      const { data, error } = await supabase
-        .from('vehicles')
-        .select('*')
-        .eq('status', 'available')
-        .order('plate_number');
-      
-      if (error) {
-        console.error('Error fetching available vehicles:', error);
-        throw error;
-      }
-      
-      console.log('Available vehicles fetched:', data?.length || 0);
-      return data;
-    } catch (error) {
-      console.error('Exception in getAvailableVehicles:', error);
       throw error;
     }
   },
@@ -196,31 +105,59 @@ const vehicleService = {
     try {
       console.log('Adding new vehicle:', vehicleData);
       
-      // Check authentication
-      const { data: authData, error: authError } = await supabase.auth.getSession();
+      // Check if we should assign a driver
+      const shouldAssignDriver = vehicleData.status === 'assigned' && vehicleData.driver_id;
       
-      if (authError || !authData.session) {
-        console.error('Auth error:', authError);
-        throw new Error('Authentication required');
-      }
+      // Prepare vehicle data
+      const newVehicle = {
+        plate_number: vehicleData.plate_number,
+        model: vehicleData.model,
+        year: parseInt(vehicleData.year),
+        status: vehicleData.status,
+        assigned_to: shouldAssignDriver ? vehicleData.driver_id : null,
+        metadata: vehicleData.metadata || {}
+      };
       
+      // Insert the vehicle
       const { data, error } = await supabase
         .from('vehicles')
-        .insert({
-          plate_number: vehicleData.plate_number,
-          model: vehicleData.model,
-          year: parseInt(vehicleData.year),
-          status: 'available',
-          metadata: vehicleData.metadata || {}
-        })
+        .insert(newVehicle)
         .select();
       
       if (error) {
         console.error('Error adding vehicle:', error);
-        throw error;
+        throw new Error(error.message || 'Failed to add vehicle');
       }
       
-      console.log('Vehicle added successfully:', data[0]?.id);
+      // Create assignment record if needed
+      if (shouldAssignDriver && data[0].id) {
+        try {
+          // Get current user's ID
+          const { data: authData } = await supabase.auth.getSession();
+          const { data: userData } = await supabase
+            .from('users')
+            .select('id')
+            .eq('auth_id', authData.session.user.id)
+            .single();
+          
+          // Create the assignment record
+          await supabase
+            .from('vehicle_assignments')
+            .insert({
+              vehicle_id: data[0].id,
+              driver_id: vehicleData.driver_id,
+              assigned_by: userData?.id,
+              start_date: new Date().toISOString(),
+              end_date: null,
+              reason: 'Initial assignment',
+              status: 'active'
+            });
+        } catch (assignmentError) {
+          console.error('Error creating assignment record:', assignmentError);
+          // Continue anyway
+        }
+      }
+      
       return data[0];
     } catch (error) {
       console.error('Exception in addVehicle:', error);
@@ -238,23 +175,39 @@ const vehicleService = {
     try {
       console.log('Updating vehicle ID:', id, vehicleData);
       
-      // Check authentication
-      const { data: authData, error: authError } = await supabase.auth.getSession();
+      // Determine driver assignment status
+      const shouldAssignDriver = vehicleData.status === 'assigned' && vehicleData.driver_id;
       
-      if (authError || !authData.session) {
-        console.error('Auth error:', authError);
-        throw new Error('Authentication required');
+      // Get current vehicle data
+      const { data: currentVehicle, error: fetchError } = await supabase
+        .from('vehicles')
+        .select('assigned_to, status')
+        .eq('id', id)
+        .single();
+        
+      if (fetchError) {
+        console.error('Error fetching current vehicle data:', fetchError);
+        throw new Error(fetchError.message || 'Failed to fetch current vehicle data');
       }
       
-      // Create update object with only provided fields
+      // Create update object
       const updateData = {};
       if (vehicleData.plate_number !== undefined) updateData.plate_number = vehicleData.plate_number;
       if (vehicleData.model !== undefined) updateData.model = vehicleData.model;
       if (vehicleData.year !== undefined) updateData.year = parseInt(vehicleData.year);
       if (vehicleData.status !== undefined) updateData.status = vehicleData.status;
-      if (vehicleData.assigned_to !== undefined) updateData.assigned_to = vehicleData.assigned_to;
       if (vehicleData.metadata !== undefined) updateData.metadata = vehicleData.metadata;
       
+      // Handle assigned_to field
+      if (vehicleData.status !== undefined) {
+        if (vehicleData.status === 'assigned' && vehicleData.driver_id) {
+          updateData.assigned_to = vehicleData.driver_id;
+        } else if (vehicleData.status !== 'assigned') {
+          updateData.assigned_to = null;
+        }
+      }
+      
+      // Update the vehicle
       const { data, error } = await supabase
         .from('vehicles')
         .update(updateData)
@@ -263,10 +216,53 @@ const vehicleService = {
       
       if (error) {
         console.error('Error updating vehicle:', error);
-        throw error;
+        throw new Error(error.message || 'Failed to update vehicle');
       }
       
-      console.log('Vehicle updated successfully:', data[0]?.id);
+      // Update assignment records if needed
+      const assignmentChanged = currentVehicle.assigned_to !== (vehicleData.driver_id || null) || 
+                               currentVehicle.status !== vehicleData.status;
+      
+      if (assignmentChanged) {
+        try {
+          // Get current user ID
+          const { data: authData } = await supabase.auth.getSession();
+          const { data: userData } = await supabase
+            .from('users')
+            .select('id')
+            .eq('auth_id', authData.session.user.id)
+            .single();
+          
+          // Complete any active assignments
+          await supabase
+            .from('vehicle_assignments')
+            .update({
+              status: 'completed',
+              end_date: new Date().toISOString()
+            })
+            .eq('vehicle_id', id)
+            .eq('status', 'active');
+          
+          // Create new assignment if needed
+          if (shouldAssignDriver) {
+            await supabase
+              .from('vehicle_assignments')
+              .insert({
+                vehicle_id: id,
+                driver_id: vehicleData.driver_id,
+                assigned_by: userData?.id,
+                start_date: new Date().toISOString(),
+                end_date: null,
+                reason: 'Assignment update',
+                status: 'active'
+              });
+          }
+        } catch (assignmentError) {
+          console.error('Error updating assignment records:', assignmentError);
+          // Continue anyway
+        }
+      }
+      
       return data[0];
     } catch (error) {
       console.error(`Exception in updateVehicle:`, error);
@@ -283,14 +279,22 @@ const vehicleService = {
     try {
       console.log('Deleting vehicle ID:', id);
       
-      // Check authentication
-      const { data: authData, error: authError } = await supabase.auth.getSession();
-      
-      if (authError || !authData.session) {
-        console.error('Auth error:', authError);
-        throw new Error('Authentication required');
+      // First complete any active assignments
+      try {
+        await supabase
+          .from('vehicle_assignments')
+          .update({
+            status: 'completed',
+            end_date: new Date().toISOString()
+          })
+          .eq('vehicle_id', id)
+          .eq('status', 'active');
+      } catch (assignmentError) {
+        console.error('Error completing assignments:', assignmentError);
+        // Continue with deletion anyway
       }
       
+      // Delete the vehicle
       const { error } = await supabase
         .from('vehicles')
         .delete()
@@ -298,185 +302,12 @@ const vehicleService = {
       
       if (error) {
         console.error('Error deleting vehicle:', error);
-        throw error;
+        throw new Error(error.message || 'Failed to delete vehicle');
       }
       
-      console.log('Vehicle deleted successfully');
       return true;
     } catch (error) {
       console.error(`Exception in deleteVehicle:`, error);
-      throw error;
-    }
-  },
-
-  /**
-   * Assign a vehicle to a driver
-   * @param {string} vehicleId - Vehicle ID
-   * @param {string} driverId - Driver ID
-   * @returns {Promise<Object>} Updated vehicle
-   */
-  assignVehicle: async (vehicleId, driverId) => {
-    try {
-      console.log(`Assigning vehicle ${vehicleId} to driver ${driverId}`);
-      
-      // Check authentication
-      const { data: authData, error: authError } = await supabase.auth.getSession();
-      
-      if (authError || !authData.session) {
-        console.error('Auth error:', authError);
-        throw new Error('Authentication required');
-      }
-      
-      const { data, error } = await supabase
-        .from('vehicles')
-        .update({
-          assigned_to: driverId,
-          status: 'assigned'
-        })
-        .eq('id', vehicleId)
-        .select();
-      
-      if (error) {
-        console.error('Error assigning vehicle:', error);
-        throw error;
-      }
-      
-      console.log('Vehicle assigned successfully:', data[0]?.id);
-      return data[0];
-    } catch (error) {
-      console.error(`Exception in assignVehicle:`, error);
-      throw error;
-    }
-  },
-
-  /**
-   * Unassign a vehicle from its driver
-   * @param {string} vehicleId - Vehicle ID
-   * @returns {Promise<Object>} Updated vehicle
-   */
-  unassignVehicle: async (vehicleId) => {
-    try {
-      console.log(`Unassigning vehicle ${vehicleId}`);
-      
-      // Check authentication
-      const { data: authData, error: authError } = await supabase.auth.getSession();
-      
-      if (authError || !authData.session) {
-        console.error('Auth error:', authError);
-        throw new Error('Authentication required');
-      }
-      
-      const { data, error } = await supabase
-        .from('vehicles')
-        .update({
-          assigned_to: null,
-          status: 'available'
-        })
-        .eq('id', vehicleId)
-        .select();
-      
-      if (error) {
-        console.error('Error unassigning vehicle:', error);
-        throw error;
-      }
-      
-      console.log('Vehicle unassigned successfully:', data[0]?.id);
-      return data[0];
-    } catch (error) {
-      console.error(`Exception in unassignVehicle:`, error);
-      throw error;
-    }
-  },
-
-  /**
-   * Get vehicle metadata
-   * @param {string} vehicleId - Vehicle ID
-   * @returns {Promise<Object>} Vehicle metadata
-   */
-  getVehicleMetadata: async (vehicleId) => {
-    try {
-      console.log(`Fetching metadata for vehicle ${vehicleId}`);
-      
-      // Check authentication
-      const { data: authData, error: authError } = await supabase.auth.getSession();
-      
-      if (authError || !authData.session) {
-        console.error('Auth error:', authError);
-        throw new Error('Authentication required');
-      }
-      
-      const { data, error } = await supabase
-        .from('vehicles')
-        .select('metadata')
-        .eq('id', vehicleId)
-        .single();
-      
-      if (error) {
-        console.error(`Error fetching metadata for vehicle ${vehicleId}:`, error);
-        throw error;
-      }
-      
-      return data.metadata || {};
-    } catch (error) {
-      console.error(`Exception in getVehicleMetadata:`, error);
-      throw error;
-    }
-  },
-
-  /**
-   * Update vehicle metadata
-   * @param {string} vehicleId - Vehicle ID
-   * @param {Object} metadata - Metadata object
-   * @returns {Promise<Object>} Updated vehicle
-   */
-  updateVehicleMetadata: async (vehicleId, metadata) => {
-    try {
-      console.log(`Updating metadata for vehicle ${vehicleId}`);
-      
-      // Check authentication
-      const { data: authData, error: authError } = await supabase.auth.getSession();
-      
-      if (authError || !authData.session) {
-        console.error('Auth error:', authError);
-        throw new Error('Authentication required');
-      }
-      
-      // First get current metadata
-      const { data: currentData, error: fetchError } = await supabase
-        .from('vehicles')
-        .select('metadata')
-        .eq('id', vehicleId)
-        .single();
-      
-      if (fetchError) {
-        console.error(`Error fetching current metadata for vehicle ${vehicleId}:`, fetchError);
-        throw fetchError;
-      }
-      
-      // Merge with new metadata
-      const updatedMetadata = {
-        ...(currentData.metadata || {}),
-        ...metadata
-      };
-      
-      // Update the vehicle
-      const { data, error } = await supabase
-        .from('vehicles')
-        .update({
-          metadata: updatedMetadata
-        })
-        .eq('id', vehicleId)
-        .select();
-      
-      if (error) {
-        console.error(`Error updating metadata for vehicle ${vehicleId}:`, error);
-        throw error;
-      }
-      
-      console.log('Vehicle metadata updated successfully:', data[0]?.id);
-      return data[0];
-    } catch (error) {
-      console.error(`Exception in updateVehicleMetadata:`, error);
       throw error;
     }
   }

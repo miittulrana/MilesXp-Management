@@ -1,4 +1,5 @@
 import supabase from '../../lib/supabase';
+import { ROLES } from '../../lib/constants';
 import { generatePassword } from '../../lib/utils';
 
 /**
@@ -18,12 +19,12 @@ const driverService = {
           *,
           vehicles(id, plate_number, model, year)
         `)
-        .eq('role', 'driver')
+        .eq('role', ROLES.DRIVER)
         .order('name');
       
       if (error) {
         console.error('Error fetching drivers:', error);
-        throw error;
+        throw new Error(error.message || 'Failed to fetch drivers');
       }
       
       console.log('Drivers fetched:', data?.length || 0);
@@ -31,7 +32,12 @@ const driverService = {
       // Format data for UI
       return data.map(driver => ({
         ...driver,
-        assigned_vehicle: driver.vehicles?.plate_number || null
+        assigned_vehicle: driver.vehicles && driver.vehicles.length > 0 
+          ? driver.vehicles[0].plate_number 
+          : null,
+        assigned_vehicle_id: driver.vehicles && driver.vehicles.length > 0 
+          ? driver.vehicles[0].id 
+          : null
       }));
     } catch (error) {
       console.error('Exception in getDrivers:', error);
@@ -54,11 +60,12 @@ const driverService = {
           vehicles(id, plate_number, model, year)
         `)
         .eq('id', id)
+        .eq('role', ROLES.DRIVER)
         .single();
       
       if (error) {
         console.error('Error fetching driver details:', error);
-        throw error;
+        throw new Error(error.message || 'Driver not found');
       }
       
       console.log('Driver details fetched:', data?.id);
@@ -66,8 +73,12 @@ const driverService = {
       // Format data for UI
       return {
         ...data,
-        assigned_vehicle: data.vehicles?.plate_number || null,
-        assigned_vehicle_id: data.vehicles?.id || null
+        assigned_vehicle: data.vehicles && data.vehicles.length > 0 
+          ? data.vehicles[0].plate_number 
+          : null,
+        assigned_vehicle_id: data.vehicles && data.vehicles.length > 0 
+          ? data.vehicles[0].id 
+          : null
       };
     } catch (error) {
       console.error(`Exception in getDriverById:`, error);
@@ -76,90 +87,15 @@ const driverService = {
   },
 
   /**
-   * Get driver by auth ID
-   * @param {string} authId - Auth ID
-   * @returns {Promise<Object>} Driver details
-   */
-  getDriverByAuthId: async (authId) => {
-    try {
-      console.log('Fetching driver details for auth ID:', authId);
-      const { data, error } = await supabase
-        .from('users')
-        .select(`
-          *,
-          vehicles(id, plate_number, model, year)
-        `)
-        .eq('auth_id', authId)
-        .single();
-      
-      if (error) {
-        console.error('Error fetching driver details by auth ID:', error);
-        throw error;
-      }
-      
-      console.log('Driver details fetched by auth ID:', data?.id);
-      
-      // Format data for UI
-      return {
-        ...data,
-        assigned_vehicle: data.vehicles?.plate_number || null,
-        assigned_vehicle_id: data.vehicles?.id || null
-      };
-    } catch (error) {
-      console.error(`Exception in getDriverByAuthId:`, error);
-      throw error;
-    }
-  },
-
-  /**
-   * Get available drivers (not assigned to any vehicle)
-   * @returns {Promise<Array>} List of available drivers
-   */
-  getAvailableDrivers: async () => {
-    try {
-      console.log('Fetching available drivers');
-      
-      // Fetch drivers that don't have a vehicle assigned to them
-      const { data, error } = await supabase
-        .from('users')
-        .select(`
-          id,
-          name,
-          email,
-          phone,
-          role
-        `)
-        .eq('role', 'driver')
-        .not('id', 'in', supabase
-          .from('vehicles')
-          .select('assigned_to')
-          .not('assigned_to', 'is', null)
-        )
-        .order('name');
-      
-      if (error) {
-        console.error('Error fetching available drivers:', error);
-        throw error;
-      }
-      
-      console.log('Available drivers fetched:', data?.length || 0);
-      return data;
-    } catch (error) {
-      console.error('Exception in getAvailableDrivers:', error);
-      throw error;
-    }
-  },
-
-  /**
    * Add a new driver
    * @param {Object} driverData - Driver data
-   * @returns {Promise<Object>} Created driver
+   * @returns {Promise<Object>} Created driver with password
    */
   addDriver: async (driverData) => {
     try {
       console.log('Adding new driver:', driverData);
       
-      // Generate a password if none is provided
+      // Generate a password
       const password = driverData.password || generatePassword(10);
       
       // Create auth user first
@@ -169,14 +105,14 @@ const driverService = {
         options: {
           data: {
             name: driverData.name,
-            role: 'driver'
+            role: ROLES.DRIVER
           }
         }
       });
       
       if (authError) {
         console.error('Error creating auth user:', authError);
-        throw authError;
+        throw new Error(authError.message || 'Failed to create user authentication');
       }
       
       if (!authData?.user) {
@@ -193,7 +129,7 @@ const driverService = {
           name: driverData.name,
           email: driverData.email,
           phone: driverData.phone || null,
-          role: 'driver'
+          role: ROLES.DRIVER
         })
         .select();
       
@@ -207,7 +143,7 @@ const driverService = {
           console.error('Error cleaning up auth user:', cleanupError);
         }
         
-        throw error;
+        throw new Error(error.message || 'Failed to create driver record');
       }
       
       console.log('Driver record created:', data[0]?.id);
@@ -240,11 +176,12 @@ const driverService = {
         .from('users')
         .update(updateData)
         .eq('id', id)
+        .eq('role', ROLES.DRIVER)
         .select();
       
       if (error) {
         console.error('Error updating driver:', error);
-        throw error;
+        throw new Error(error.message || 'Failed to update driver');
       }
       
       console.log('Driver updated successfully:', data[0]?.id);
@@ -264,43 +201,49 @@ const driverService = {
     try {
       console.log('Deleting driver ID:', id);
       
-      // First get the auth_id
+      // First check if driver has any vehicles assigned
+      const { data: vehicleData, error: vehicleError } = await supabase
+        .from('vehicles')
+        .select('id')
+        .eq('assigned_to', id);
+      
+      if (!vehicleError && vehicleData?.length > 0) {
+        throw new Error('Cannot delete driver with assigned vehicles. Please unassign vehicles first.');
+      }
+      
+      // Get auth_id for later cleanup
       const { data: userData, error: fetchError } = await supabase
         .from('users')
         .select('auth_id')
         .eq('id', id)
+        .eq('role', ROLES.DRIVER)
         .single();
       
       if (fetchError) {
         console.error('Error fetching driver auth_id:', fetchError);
-        throw fetchError;
-      }
-      
-      if (!userData?.auth_id) {
-        throw new Error('Driver auth_id not found');
+        throw new Error(fetchError.message || 'Driver not found');
       }
       
       // Delete the user from the users table
       const { error: deleteError } = await supabase
         .from('users')
         .delete()
-        .eq('id', id);
+        .eq('id', id)
+        .eq('role', ROLES.DRIVER);
       
       if (deleteError) {
-        console.error('Error deleting driver from users table:', deleteError);
-        throw deleteError;
+        console.error('Error deleting driver:', deleteError);
+        throw new Error(deleteError.message || 'Failed to delete driver');
       }
       
-      // Also delete the auth user if possible
-      // Note: This might require admin rights which might not be available in client-side
-      try {
-        const { error: authDeleteError } = await supabase.auth.admin.deleteUser(userData.auth_id);
-        if (authDeleteError) {
-          console.warn('Could not delete auth user:', authDeleteError);
+      // Try to clean up auth user
+      if (userData?.auth_id) {
+        try {
+          await supabase.auth.admin.deleteUser(userData.auth_id);
+        } catch (authDeleteException) {
+          console.warn('Exception in auth user deletion:', authDeleteException);
           // Continue anyway as the user record is already deleted
         }
-      } catch (authDeleteException) {
-        console.warn('Exception in auth user deletion (might be expected if not admin):', authDeleteException);
       }
       
       console.log('Driver deleted successfully');
@@ -325,11 +268,12 @@ const driverService = {
         .from('users')
         .select('auth_id, email')
         .eq('id', id)
+        .eq('role', ROLES.DRIVER)
         .single();
       
       if (fetchError) {
         console.error('Error fetching driver auth_id:', fetchError);
-        throw fetchError;
+        throw new Error(fetchError.message || 'Driver not found');
       }
       
       if (!userData?.auth_id) {
@@ -348,6 +292,9 @@ const driverService = {
         );
         
         if (updateError) throw updateError;
+        
+        console.log('Password reset successfully');
+        return { success: true, newPassword };
       } catch (adminUpdateError) {
         console.warn('Admin password reset failed, trying password recovery:', adminUpdateError);
         
@@ -361,7 +308,7 @@ const driverService = {
         
         if (recoveryError) {
           console.error('Password recovery email failed:', recoveryError);
-          throw recoveryError;
+          throw new Error(recoveryError.message || 'Failed to reset password');
         }
         
         return { 
@@ -370,9 +317,6 @@ const driverService = {
           isEmail: true 
         };
       }
-      
-      console.log('Password reset successfully');
-      return { success: true, newPassword };
     } catch (error) {
       console.error(`Exception in resetPassword:`, error);
       throw error;
@@ -391,14 +335,14 @@ const driverService = {
         .from('vehicle_assignments')
         .select(`
           *,
-          vehicle:vehicle_id(id, plate_number, model, year)
+          vehicle:vehicle_id(id, plate_number, model, year, status)
         `)
         .eq('driver_id', driverId)
         .order('start_date', { ascending: false });
       
       if (error) {
         console.error(`Error fetching assignments for driver ${driverId}:`, error);
-        throw error;
+        throw new Error(error.message || 'Failed to fetch driver assignments');
       }
       
       console.log(`Assignments fetched for driver ${driverId}:`, data?.length || 0);
@@ -426,7 +370,7 @@ const driverService = {
       
       if (error) {
         console.error(`Error fetching documents for driver ${driverId}:`, error);
-        throw error;
+        throw new Error(error.message || 'Failed to fetch driver documents');
       }
       
       console.log(`Documents fetched for driver ${driverId}:`, data?.length || 0);
@@ -453,6 +397,55 @@ const driverService = {
       });
     } catch (error) {
       console.error(`Exception in getDriverDocuments:`, error);
+      throw error;
+    }
+  },
+
+  /**
+   * Get available drivers (not assigned to any vehicle)
+   * @returns {Promise<Array>} List of available drivers
+   */
+  getAvailableDrivers: async () => {
+    try {
+      console.log('Fetching available drivers');
+      
+      // Get all drivers
+      const { data, error } = await supabase
+        .from('users')
+        .select(`
+          id,
+          name,
+          email,
+          phone
+        `)
+        .eq('role', ROLES.DRIVER)
+        .order('name');
+      
+      if (error) {
+        console.error('Error fetching available drivers:', error);
+        throw new Error(error.message || 'Failed to fetch available drivers');
+      }
+      
+      // Now get all assigned drivers
+      const { data: assignedDrivers, error: assignedError } = await supabase
+        .from('vehicles')
+        .select('assigned_to')
+        .not('assigned_to', 'is', null);
+      
+      if (!assignedError) {
+        // Filter out assigned drivers
+        const assignedIds = assignedDrivers.map(v => v.assigned_to);
+        const availableDrivers = data.filter(driver => !assignedIds.includes(driver.id));
+        
+        console.log('Available drivers fetched:', availableDrivers?.length || 0);
+        return availableDrivers;
+      }
+      
+      // If there was an error getting assigned drivers, just return all drivers
+      console.log('All drivers fetched (could not filter):', data?.length || 0);
+      return data;
+    } catch (error) {
+      console.error('Exception in getAvailableDrivers:', error);
       throw error;
     }
   }
