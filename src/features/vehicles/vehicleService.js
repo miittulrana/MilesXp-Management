@@ -12,14 +12,6 @@ const vehicleService = {
     try {
       console.log('Fetching vehicles...');
       
-      // Check authentication first
-      const { data: authData, error: authError } = await supabase.auth.getSession();
-      
-      if (authError || !authData.session) {
-        console.error('Auth error:', authError);
-        throw new Error('Authentication required');
-      }
-
       // Get vehicles with driver information
       const { data, error } = await supabase
         .from('vehicles')
@@ -57,14 +49,6 @@ const vehicleService = {
   getVehicleById: async (id) => {
     try {
       console.log('Fetching vehicle details for ID:', id);
-      
-      // Check authentication
-      const { data: authData, error: authError } = await supabase.auth.getSession();
-      
-      if (authError || !authData.session) {
-        console.error('Auth error:', authError);
-        throw new Error('Authentication required');
-      }
       
       const { data, error } = await supabase
         .from('vehicles')
@@ -308,6 +292,33 @@ const vehicleService = {
       return true;
     } catch (error) {
       console.error(`Exception in deleteVehicle:`, error);
+      throw error;
+    }
+  },
+
+  /**
+   * Get available vehicles (not assigned to any driver)
+   * @returns {Promise<Array>} List of available vehicles
+   */
+  getAvailableVehicles: async () => {
+    try {
+      console.log('Fetching available vehicles');
+      
+      const { data, error } = await supabase
+        .from('vehicles')
+        .select('*')
+        .eq('status', 'available')
+        .order('plate_number');
+      
+      if (error) {
+        console.error('Error fetching available vehicles:', error);
+        throw new Error(error.message || 'Failed to fetch available vehicles');
+      }
+      
+      console.log('Available vehicles fetched:', data?.length || 0);
+      return data;
+    } catch (error) {
+      console.error('Exception in getAvailableVehicles:', error);
       throw error;
     }
   }

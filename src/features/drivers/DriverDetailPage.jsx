@@ -11,9 +11,6 @@ import Card from '../../components/common/Card/Card';
 import { CardBody, CardHeader } from '../../components/common/Card/Card';
 import Button from '../../components/common/Button/Button';
 import Loader from '../../components/common/Loader/Loader';
-import Modal from '../../components/common/Modal/Modal';
-import DriverForm from './DriverForm';
-import ConfirmDialog from '../../components/common/Dialog/ConfirmDialog';
 import DataTable from '../../components/common/DataTable/DataTable';
 
 /**
@@ -34,12 +31,6 @@ const DriverDetailPage = () => {
   const [loadingDocuments, setLoadingDocuments] = useState(false);
   
   // UI state
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [newPassword, setNewPassword] = useState('');
   const [activeTab, setActiveTab] = useState('details'); // details, assignments, documents
 
   // Fetch driver details and related data
@@ -84,70 +75,25 @@ const DriverDetailPage = () => {
     fetchDriverData();
   }, [id, navigate, showError]);
 
-  // Handle edit driver
-  const handleEditDriver = async (driverData) => {
-    try {
-      setIsSubmitting(true);
-      await driverService.updateDriver(id, driverData);
-      showToast('Driver updated successfully', 'success');
-      setIsEditModalOpen(false);
-      
-      // Refresh driver data
-      const updatedDriver = await driverService.getDriverById(id);
-      setDriver(updatedDriver);
-    } catch (error) {
-      console.error('Error updating driver:', error);
-      showError(error.message || 'Failed to update driver');
-    } finally {
-      setIsSubmitting(false);
-    }
+  // Navigate to user management for editing
+  const handleEditInUserManagement = () => {
+    showToast('Redirecting to User Management for editing', 'info');
+    navigate(ROUTES.USERS);
   };
 
-  // Handle password reset
-  const handleResetPassword = async () => {
-    try {
-      setLoading(true);
-      const result = await driverService.resetPassword(id);
-      
-      if (result.isEmail) {
-        showToast('Password reset email sent to driver', 'success');
-      } else if (result.newPassword) {
-        setNewPassword(result.newPassword);
-        setIsPasswordModalOpen(true);
-      }
-    } catch (error) {
-      console.error('Error resetting password:', error);
-      showError(error.message || 'Failed to reset password');
-    } finally {
-      setLoading(false);
-    }
+  // Handle vehicle assignment
+  const handleAssignVehicle = () => {
+    navigate(`${ROUTES.ASSIGN_VEHICLE}?driverId=${id}`);
   };
 
-  // Handle delete driver
-  const handleDeleteDriver = async () => {
-    try {
-      setIsDeleting(true);
-      await driverService.deleteDriver(id);
-      showToast('Driver deleted successfully', 'success');
-      setIsDeleteDialogOpen(false);
-      navigate(ROUTES.DRIVERS);
-    } catch (error) {
-      console.error('Error deleting driver:', error);
-      showError(error.message || 'Failed to delete driver');
-    } finally {
-      setIsDeleting(false);
-    }
+  // Handle document management
+  const handleManageDocuments = () => {
+    navigate(`${ROUTES.DOCUMENTS}?entityType=driver&entityId=${id}`);
   };
 
   // Return to drivers list
   const handleBackClick = () => {
     navigate(ROUTES.DRIVERS);
-  };
-
-  // Handle clipboard copy
-  const handleCopyToClipboard = () => {
-    navigator.clipboard.writeText(newPassword);
-    showToast('Password copied to clipboard', 'info');
   };
 
   // Assignments table columns
@@ -340,45 +286,34 @@ const DriverDetailPage = () => {
             <CardHeader title="Actions" />
             <CardBody>
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                <Button 
-                  variant="primary" 
-                  onClick={() => setIsEditModalOpen(true)}
-                  disabled={!isAdmin()}
-                >
-                  Edit Driver
-                </Button>
+                {isAdmin() && (
+                  <Button 
+                    variant="primary" 
+                    onClick={handleEditInUserManagement}
+                  >
+                    Edit in User Management
+                  </Button>
+                )}
                 
-                <Button 
-                  variant="secondary" 
-                  onClick={handleResetPassword}
-                  disabled={!isAdmin()}
-                >
-                  Reset Password
-                </Button>
-                
-                <Button 
-                  variant="success" 
-                  onClick={() => navigate(`${ROUTES.ASSIGN_VEHICLE}?driverId=${id}`)}
-                  disabled={!isAdmin()}
-                >
-                  Assign Vehicle
-                </Button>
+                {isAdmin() && (
+                  <Button 
+                    variant="success" 
+                    onClick={handleAssignVehicle}
+                  >
+                    Assign Vehicle
+                  </Button>
+                )}
                 
                 <Button 
                   variant="outline" 
-                  onClick={() => navigate(`${ROUTES.DOCUMENTS}?entityType=driver&entityId=${id}`)}
+                  onClick={handleManageDocuments}
                 >
                   Manage Documents
                 </Button>
                 
-                {isAdmin() && (
-                  <Button 
-                    variant="danger" 
-                    onClick={() => setIsDeleteDialogOpen(true)}
-                  >
-                    Delete Driver
-                  </Button>
-                )}
+                <div className="col-span-full mt-2 text-sm text-gray-500">
+                  <p>Note: To edit driver details or reset passwords, please use the User Management section.</p>
+                </div>
               </div>
             </CardBody>
           </Card>
@@ -417,7 +352,7 @@ const DriverDetailPage = () => {
               <Button
                 variant="primary"
                 size="small"
-                onClick={() => navigate(`${ROUTES.DOCUMENTS}?entityType=driver&entityId=${id}`)}
+                onClick={handleManageDocuments}
               >
                 Manage Documents
               </Button>
@@ -443,68 +378,6 @@ const DriverDetailPage = () => {
         </Card>
       )}
 
-      {/* Edit Driver Modal */}
-      <Modal
-        isOpen={isEditModalOpen}
-        onClose={() => !isSubmitting && setIsEditModalOpen(false)}
-        title="Edit Driver"
-      >
-        <div className="p-4">
-          {driver && (
-            <DriverForm
-              initialValues={driver}
-              onSubmit={handleEditDriver}
-              onCancel={() => setIsEditModalOpen(false)}
-              isSubmitting={isSubmitting}
-              submitLabel="Update Driver"
-              isEditMode={true}
-            />
-          )}
-        </div>
-      </Modal>
-
-      {/* Password Modal */}
-      <Modal
-        isOpen={isPasswordModalOpen}
-        onClose={() => setIsPasswordModalOpen(false)}
-        title="New Password"
-      >
-        <div className="p-4">
-          <div className="password-header mb-4">
-            <h3 className="mb-2">New Password Generated</h3>
-            <p>Password for {driver?.name} has been reset to:</p>
-          </div>
-          
-          <div className="bg-gray-100 p-3 rounded border mb-4 font-mono text-center break-all">
-            {newPassword}
-          </div>
-          
-          <p className="text-sm text-gray-500 mb-4">
-            This password will only be shown once. Please save it or share it with the driver.
-          </p>
-          
-          <Button 
-            variant="primary" 
-            onClick={handleCopyToClipboard}
-            fullWidth
-          >
-            Copy to Clipboard
-          </Button>
-        </div>
-      </Modal>
-      
-      {/* Delete Confirmation Dialog */}
-      <ConfirmDialog
-        isOpen={isDeleteDialogOpen}
-        onClose={() => setIsDeleteDialogOpen(false)}
-        onConfirm={handleDeleteDriver}
-        title="Delete Driver"
-        message={`Are you sure you want to delete driver ${driver?.name}? This action cannot be undone.`}
-        confirmLabel="Delete"
-        confirmVariant="danger"
-        isLoading={isDeleting}
-      />
-      
       <style jsx>{`
         .role-badge {
           display: inline-block;

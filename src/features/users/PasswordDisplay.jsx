@@ -13,7 +13,7 @@ const PasswordDisplay = ({ password, userName, onCopy }) => {
         <p>Password for <strong>{userName}</strong> has been generated:</p>
       </div>
       
-      <div className="password-display bg-surface-color border border-border-color rounded-md p-3 my-4 font-mono text-lg break-all font-semibold">
+      <div className="bg-surface-color border border-border-color rounded-md p-3 my-4 font-mono text-lg break-all font-semibold">
         {password}
       </div>
       
@@ -28,20 +28,6 @@ const PasswordDisplay = ({ password, userName, onCopy }) => {
       >
         Copy to Clipboard
       </Button>
-      
-      <style jsx>{`
-        .password-display {
-          background-color: var(--surface-color);
-          border: 1px solid var(--border-color);
-          border-radius: var(--border-radius-md);
-          padding: 12px;
-          margin: 16px 0;
-          font-family: monospace;
-          font-size: 18px;
-          word-break: break-all;
-          font-weight: 600;
-        }
-      `}</style>
     </div>
   );
 };

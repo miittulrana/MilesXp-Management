@@ -4,15 +4,18 @@ import { ROUTES, ROLES } from '../../lib/constants';
 import userService from './userService';
 import { useToast } from '../../hooks/useToast';
 import { useAuth } from '../../hooks/useAuth';
+import { formatDate } from '../../lib/utils';
 
 // Core UI components
 import Card from '../../components/common/Card/Card';
 import { CardBody, CardHeader } from '../../components/common/Card/Card';
 import Button from '../../components/common/Button/Button';
-import DataTable from '../../components/common/DataTable/DataTable';
 import Modal from '../../components/common/Modal/Modal';
-import Input from '../../components/common/Form/Input';
-import Select from '../../components/common/Form/Select';
+import Loader from '../../components/common/Loader/Loader';
+import DataTable from '../../components/common/DataTable/DataTable';
+import ConfirmDialog from '../../components/common/Dialog/ConfirmDialog';
+import UserForm from './UserForm';
+import PasswordDisplay from './PasswordDisplay';
 
 /**
  * Users management page component
@@ -20,16 +23,14 @@ import Select from '../../components/common/Form/Select';
 const UsersPage = () => {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
   const [newPassword, setNewPassword] = useState('');
-  const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    phone: '',
-    role: ROLES.DRIVER
-  });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const { showSuccess, showError } = useToast();
   const { userDetails } = useAuth();
@@ -52,88 +53,87 @@ const UsersPage = () => {
   const fetchUsers = async () => {
     try {
       setLoading(true);
+      console.log('Fetching users list');
       const data = await userService.getUsers();
       setUsers(data);
+      console.log(`Fetched ${data.length} users`);
     } catch (error) {
       console.error('Error fetching users:', error);
-      showError('Failed to load users');
+      showError('Failed to load users: ' + (error.message || ''));
     } finally {
       setLoading(false);
     }
   };
 
-  // Handle form input changes
-  const handleInputChange = (e) => {
-    const { name, value } = e.target;
-    setFormData((prevData) => ({
-      ...prevData,
-      [name]: value
-    }));
+  // Handle add user button click
+  const handleAddUser = () => {
+    setSelectedUser(null);
+    setIsAddModalOpen(true);
+  };
+
+  // Handle edit user
+  const handleEditUser = (user) => {
+    console.log('Editing user:', user);
+    setSelectedUser(user);
+    setIsEditModalOpen(true);
   };
 
   // Handle adding a new user
-  const handleAddUser = () => {
-    setSelectedUser(null);
-    setFormData({
-      name: '',
-      email: '',
-      phone: '',
-      role: ROLES.DRIVER
-    });
-    setIsModalOpen(true);
-  };
-
-  // Handle editing a user
-  const handleEditUser = (user) => {
-    setSelectedUser(user);
-    setFormData({
-      name: user.name,
-      email: user.email,
-      phone: user.phone || '',
-      role: user.role
-    });
-    setIsModalOpen(true);
-  };
-
-  // Handle form submission
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleAddUserSubmit = async (userData) => {
+    console.log('User form submitted with data:', userData);
     
     try {
-      setLoading(true);
+      setIsSubmitting(true);
+      console.log('Starting user creation process...');
       
-      if (selectedUser) {
-        // Update existing user
-        await userService.updateUser(selectedUser.id, {
-          name: formData.name,
-          phone: formData.phone,
-          role: formData.role
-        });
-        showSuccess('User updated successfully');
-      } else {
-        // Add new user
-        const result = await userService.addUser({
-          name: formData.name,
-          email: formData.email,
-          phone: formData.phone,
-          role: formData.role
-        });
-        
-        if (result && result.password) {
-          setNewPassword(result.password);
-          setIsPasswordModalOpen(true);
-        }
-        
-        showSuccess('User added successfully');
+      // Validate required fields client-side before sending to API
+      if (!userData.name || !userData.email || !userData.role) {
+        showError('Please fill in all required fields');
+        setIsSubmitting(false);
+        return;
       }
       
-      setIsModalOpen(false);
+      // Add timestamp for debugging
+      console.log(`${new Date().toISOString()} - Calling userService.addUser`);
+      const result = await userService.addUser(userData);
+      console.log('User creation successful:', result);
+      
+      if (result && result.password) {
+        setNewPassword(result.password);
+        setSelectedUser(result);
+        setIsPasswordModalOpen(true);
+      }
+      
+      showSuccess('User added successfully');
+      setIsAddModalOpen(false);
       fetchUsers();
     } catch (error) {
-      console.error('Error saving user:', error);
-      showError(error.message || 'An error occurred while saving user');
+      console.error('Error adding user:', error);
+      // More detailed error message
+      const errorMessage = error.message || 'Failed to add user';
+      console.error('Error details:', errorMessage);
+      showError(errorMessage);
     } finally {
-      setLoading(false);
+      console.log('User creation process completed');
+      setIsSubmitting(false);
+    }
+  };
+
+  // Handle updating a user
+  const handleEditUserSubmit = async (userData) => {
+    try {
+      setIsSubmitting(true);
+      console.log('Updating user:', userData);
+      
+      await userService.updateUser(selectedUser.id, userData);
+      showSuccess('User updated successfully');
+      setIsEditModalOpen(false);
+      fetchUsers();
+    } catch (error) {
+      console.error('Error updating user:', error);
+      showError(error.message || 'Failed to update user');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -141,12 +141,16 @@ const UsersPage = () => {
   const handleResetPassword = async (userId) => {
     try {
       setLoading(true);
+      console.log('Resetting password for user ID:', userId);
+      
       const result = await userService.resetPassword(userId);
       
       if (result.isEmail) {
         showSuccess('Password reset email sent successfully');
       } else if (result.newPassword) {
         setNewPassword(result.newPassword);
+        const user = users.find(u => u.id === userId);
+        setSelectedUser(user);
         setIsPasswordModalOpen(true);
       }
     } catch (error) {
@@ -157,22 +161,30 @@ const UsersPage = () => {
     }
   };
 
+  // Handle delete dialog open
+  const handleDeleteDialog = (user) => {
+    console.log('Opening delete dialog for user:', user);
+    setSelectedUser(user);
+    setIsDeleteDialogOpen(true);
+  };
+
   // Handle user deletion
-  const handleDeleteUser = async (userId) => {
-    if (!window.confirm('Are you sure you want to delete this user? This action cannot be undone.')) {
-      return;
-    }
+  const handleDeleteUser = async () => {
+    if (!selectedUser) return;
     
     try {
-      setLoading(true);
-      await userService.deleteUser(userId);
+      setIsDeleting(true);
+      console.log('Deleting user ID:', selectedUser.id);
+      
+      await userService.deleteUser(selectedUser.id);
       showSuccess('User deleted successfully');
+      setIsDeleteDialogOpen(false);
       fetchUsers();
     } catch (error) {
       console.error('Error deleting user:', error);
       showError(error.message || 'Failed to delete user');
     } finally {
-      setLoading(false);
+      setIsDeleting(false);
     }
   };
 
@@ -198,7 +210,7 @@ const UsersPage = () => {
       field: 'phone',
       title: 'Phone',
       sortable: false,
-      render: (value) => value || '-'
+      render: (value) => value || '—'
     },
     {
       field: 'role',
@@ -211,11 +223,17 @@ const UsersPage = () => {
       )
     },
     {
-      field: 'id',
+      field: 'created_at',
+      title: 'Created',
+      sortable: true,
+      render: (value) => formatDate(value)
+    },
+    {
+      field: 'actions',
       title: 'Actions',
       sortable: false,
       render: (_, user) => (
-        <div className="action-buttons">
+        <div className="flex gap-2 flex-wrap">
           <Button
             variant="outline"
             size="small"
@@ -234,7 +252,7 @@ const UsersPage = () => {
             <Button
               variant="danger"
               size="small"
-              onClick={() => handleDeleteUser(user.id)}
+              onClick={() => handleDeleteDialog(user)}
             >
               Delete
             </Button>
@@ -245,9 +263,9 @@ const UsersPage = () => {
   ];
 
   return (
-    <div className="users-page">
-      <div className="page-header">
-        <h1>Users Management</h1>
+    <div className="users-page p-4">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-semibold text-primary">Users Management</h1>
         <Button
           variant="primary"
           onClick={handleAddUser}
@@ -257,6 +275,7 @@ const UsersPage = () => {
       </div>
 
       <Card>
+        <CardHeader title="All Users" />
         <CardBody>
           <DataTable
             data={users}
@@ -273,68 +292,35 @@ const UsersPage = () => {
         </CardBody>
       </Card>
 
-      {/* User Form Modal */}
+      {/* Add User Modal */}
       <Modal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        title={selectedUser ? 'Edit User' : 'Add User'}
+        isOpen={isAddModalOpen}
+        onClose={() => !isSubmitting && setIsAddModalOpen(false)}
+        title="Add New User"
       >
-        <form onSubmit={handleSubmit}>
-          <Input
-            label="Name"
-            name="name"
-            value={formData.name}
-            onChange={handleInputChange}
-            required
+        <UserForm
+          onSubmit={handleAddUserSubmit}
+          onCancel={() => setIsAddModalOpen(false)}
+          isSubmitting={isSubmitting}
+          isEdit={false}
+        />
+      </Modal>
+
+      {/* Edit User Modal */}
+      <Modal
+        isOpen={isEditModalOpen}
+        onClose={() => !isSubmitting && setIsEditModalOpen(false)}
+        title="Edit User"
+      >
+        {selectedUser && (
+          <UserForm
+            initialValues={selectedUser}
+            onSubmit={handleEditUserSubmit}
+            onCancel={() => setIsEditModalOpen(false)}
+            isSubmitting={isSubmitting}
+            isEdit={true}
           />
-          
-          <Input
-            label="Email"
-            name="email"
-            type="email"
-            value={formData.email}
-            onChange={handleInputChange}
-            required={!selectedUser}
-            disabled={!!selectedUser}
-            helperText={selectedUser ? "Email cannot be changed" : ""}
-          />
-          
-          <Input
-            label="Phone"
-            name="phone"
-            value={formData.phone}
-            onChange={handleInputChange}
-          />
-          
-          <Select
-            label="Role"
-            name="role"
-            value={formData.role}
-            onChange={handleInputChange}
-            options={[
-              { value: ROLES.ADMIN, label: 'Admin' },
-              { value: ROLES.DRIVER, label: 'Driver' }
-            ]}
-            required
-          />
-          
-          <div className="modal-actions">
-            <Button
-              variant="outline"
-              type="button"
-              onClick={() => setIsModalOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="primary"
-              type="submit"
-              loading={loading}
-            >
-              {selectedUser ? 'Update User' : 'Add User'}
-            </Button>
-          </div>
-        </form>
+        )}
       </Modal>
 
       {/* Password Display Modal */}
@@ -343,85 +329,43 @@ const UsersPage = () => {
         onClose={() => setIsPasswordModalOpen(false)}
         title="New Password"
       >
-        <div className="password-container">
-          <p>A new password has been generated. Please save it as you won't be able to see it again:</p>
-          
-          <div className="password-display">
-            {newPassword}
-          </div>
-          
-          <div className="password-actions">
-            <Button
-              variant="primary"
-              onClick={handleCopyPassword}
-              fullWidth
-            >
-              Copy to Clipboard
-            </Button>
-          </div>
-        </div>
+        <PasswordDisplay
+          password={newPassword}
+          userName={selectedUser?.name || 'user'}
+          onCopy={handleCopyPassword}
+        />
       </Modal>
+      
+      {/* Delete Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={isDeleteDialogOpen}
+        onClose={() => setIsDeleteDialogOpen(false)}
+        onConfirm={handleDeleteUser}
+        title="Delete User"
+        message={`Are you sure you want to delete user ${selectedUser?.name}? This action cannot be undone.`}
+        confirmLabel="Delete"
+        confirmVariant="danger"
+        isLoading={isDeleting}
+      />
 
       <style jsx>{`
-        .users-page {
-          padding: var(--spacing-md);
-        }
-        
-        .page-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: var(--spacing-md);
-        }
-        
         .role-badge {
           display: inline-block;
-          padding: 4px 8px;
-          border-radius: 4px;
-          font-size: 12px;
-          font-weight: 600;
+          padding: 0.25rem 0.75rem;
+          border-radius: 9999px;
+          font-size: 0.75rem;
+          font-weight: 500;
           text-transform: capitalize;
         }
         
         .role-badge.admin {
-          background-color: rgba(var(--primary-color-rgb), 0.1);
+          background-color: rgba(0, 77, 153, 0.1);
           color: var(--primary-color);
         }
         
         .role-badge.driver {
-          background-color: rgba(var(--secondary-color-rgb), 0.1);
+          background-color: rgba(255, 119, 0, 0.1);
           color: var(--secondary-color);
-        }
-        
-        .action-buttons {
-          display: flex;
-          gap: 8px;
-        }
-        
-        .modal-actions {
-          display: flex;
-          justify-content: flex-end;
-          gap: 8px;
-          margin-top: var(--spacing-md);
-        }
-        
-        .password-container {
-          padding: var(--spacing-md);
-        }
-        
-        .password-display {
-          margin: var(--spacing-md) 0;
-          padding: var(--spacing-md);
-          background-color: var(--surface-color);
-          border: 1px solid var(--border-color);
-          border-radius: var(--border-radius-md);
-          font-family: monospace;
-          font-size: 16px;
-          text-align: center;
-        }
-        
-        .password-actions {
-          margin-top: var(--spacing-md);
         }
       `}</style>
     </div>

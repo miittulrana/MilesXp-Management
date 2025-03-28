@@ -93,7 +93,7 @@ const userService = {
    */
   addUser: async (userData) => {
     try {
-      console.log('Adding new user:', userData);
+      console.log('Adding new user - Request received:', userData);
       
       // Ensure required fields
       if (!userData.name || !userData.email) {
@@ -107,8 +107,10 @@ const userService = {
       
       // Generate a secure password
       const password = userData.password || generatePassword(12);
+      console.log('Generated password (only logged for debugging)');
       
       // Create auth user first
+      console.log('Creating auth user...');
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: userData.email,
         password: password,
@@ -126,12 +128,14 @@ const userService = {
       }
       
       if (!authData?.user) {
+        console.error('Auth user creation failed - no user returned');
         throw new Error('Auth user creation failed - no user returned');
       }
       
-      console.log('Auth user created:', authData.user.id);
+      console.log('Auth user created successfully, ID:', authData.user.id);
       
       // Create user record in our database
+      console.log('Creating user record in database...');
       const { data, error } = await supabase
         .from('users')
         .insert({
@@ -147,8 +151,10 @@ const userService = {
         console.error('Error creating user record:', error);
         
         // Attempt to clean up auth user if user table insert fails
+        console.log('Attempting to clean up auth user after database insertion failure');
         try {
           await supabase.auth.admin.deleteUser(authData.user.id);
+          console.log('Auth user cleanup successful');
         } catch (cleanupError) {
           console.error('Error cleaning up auth user:', cleanupError);
         }
@@ -156,7 +162,7 @@ const userService = {
         throw new Error(error.message || 'Failed to create user record');
       }
       
-      console.log('User record created:', data[0]?.id);
+      console.log('User record created successfully, ID:', data[0]?.id);
       
       // Return the created user with the generated password for displaying to admin
       return { ...data[0], password };
@@ -238,12 +244,12 @@ const userService = {
         // Check if driver has assigned vehicles
         const { data: vehicles, error: vehiclesError } = await supabase
           .from('vehicles')
-          .select('id')
+          .select('id, plate_number')
           .eq('assigned_to', id)
           .limit(1);
           
         if (!vehiclesError && vehicles && vehicles.length > 0) {
-          throw new Error('Cannot delete driver with assigned vehicles. Please unassign all vehicles first.');
+          throw new Error(`Cannot delete driver with assigned vehicle: ${vehicles[0].plate_number}. Please unassign all vehicles first.`);
         }
       }
       
@@ -305,11 +311,9 @@ const userService = {
       // Generate a new secure password
       const newPassword = generatePassword(12);
       
-      let success = false;
-      
-      // Try to update the password directly first
+      // Try to update the password directly
       try {
-        // Try the admin API to update password
+        // Try using admin API to set the password directly
         const { error: updateError } = await supabase.auth.admin.updateUserById(
           userData.auth_id,
           { password: newPassword }
@@ -319,7 +323,12 @@ const userService = {
           throw updateError;
         }
         
-        success = true;
+        console.log('Password reset successfully');
+        return { 
+          success: true, 
+          newPassword, 
+          userName: userData.name 
+        };
       } catch (adminUpdateError) {
         console.warn('Admin password reset failed, trying password recovery email:', adminUpdateError);
         
@@ -343,13 +352,6 @@ const userService = {
           userName: userData.name 
         };
       }
-      
-      console.log('Password reset successfully');
-      return { 
-        success, 
-        newPassword, 
-        userName: userData.name 
-      };
     } catch (error) {
       console.error(`Exception in resetPassword:`, error);
       throw error;

@@ -15,42 +15,40 @@ const UserForm = ({
   isSubmitting = false,
   isEdit = false
 }) => {
-  // Set default values with fallbacks
+  // Set default values
   const defaultValues = {
     name: '',
     email: '',
     phone: '',
-    role: ROLES.DRIVER,
-    ...initialValues
+    role: ROLES.DRIVER
   };
   
-  const [values, setValues] = useState(defaultValues);
+  const [formValues, setFormValues] = useState({...defaultValues, ...initialValues});
   const [errors, setErrors] = useState({});
   const [touched, setTouched] = useState({});
 
   // Update form values when initialValues change
   useEffect(() => {
-    setValues({
-      name: '',
-      email: '',
-      phone: '',
-      role: ROLES.DRIVER,
-      ...initialValues
-    });
+    if (initialValues && Object.keys(initialValues).length > 0) {
+      setFormValues({...defaultValues, ...initialValues});
+    }
   }, [initialValues]);
 
   // Handle input change
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setValues(prevValues => ({
-      ...prevValues,
+    console.log(`Field ${name} changed to: ${value}`);
+    
+    // Update form values
+    setFormValues(prev => ({
+      ...prev,
       [name]: value
     }));
-
-    // Clear error if field was in error
+    
+    // Clear error when field is updated
     if (errors[name]) {
-      setErrors(prevErrors => ({
-        ...prevErrors,
+      setErrors(prev => ({
+        ...prev,
         [name]: ''
       }));
     }
@@ -59,32 +57,50 @@ const UserForm = ({
   // Handle input blur for validation
   const handleBlur = (e) => {
     const { name } = e.target;
-    setTouched(prevTouched => ({
-      ...prevTouched,
+    
+    // Mark field as touched
+    setTouched(prev => ({
+      ...prev,
       [name]: true
     }));
     
-    validateField(name, values[name]);
+    // Validate the field
+    validateField(name, formValues[name]);
   };
 
   // Validate a field
   const validateField = (name, value) => {
-    let fieldError = '';
+    let error = '';
 
     switch (name) {
       case 'name':
-        if (!value || !value.trim()) {
-          fieldError = 'Name is required';
+        if (!value || value.trim() === '') {
+          error = 'Name is required';
+        } else if (value.trim().length < 2) {
+          error = 'Name must be at least 2 characters';
         }
         break;
       
       case 'email':
         if (!isEdit) { // Only validate email for new users
-          if (!value || !value.trim()) {
-            fieldError = 'Email is required';
+          if (!value || value.trim() === '') {
+            error = 'Email is required';
           } else if (!/\S+@\S+\.\S+/.test(value)) {
-            fieldError = 'Email is invalid';
+            error = 'Please enter a valid email address';
           }
+        }
+        break;
+        
+      case 'phone':
+        // Phone is optional but validate format if provided
+        if (value && value.trim() !== '' && !/^[\d\s\-\+\(\)]{7,20}$/.test(value)) {
+          error = 'Please enter a valid phone number';
+        }
+        break;
+
+      case 'role':
+        if (!value) {
+          error = 'Role is required';
         }
         break;
         
@@ -92,53 +108,59 @@ const UserForm = ({
         break;
     }
 
-    setErrors(prevErrors => ({
-      ...prevErrors,
-      [name]: fieldError
+    // Update errors state
+    setErrors(prev => ({
+      ...prev,
+      [name]: error
     }));
 
-    return !fieldError;
+    return !error;
   };
 
-  // Validate the form
+  // Validate the entire form
   const validateForm = () => {
-    const fieldsToValidate = ['name', 'role'];
-    if (!isEdit) fieldsToValidate.push('email');
+    const fields = ['name', 'role'];
+    if (!isEdit) fields.push('email');
     
-    let formIsValid = true;
+    let isValid = true;
     const newErrors = {};
     const newTouched = {...touched};
     
-    fieldsToValidate.forEach(field => {
+    // Validate each required field
+    fields.forEach(field => {
       newTouched[field] = true;
-      const isValid = validateField(field, values[field]);
-      if (!isValid) {
-        formIsValid = false;
-        newErrors[field] = errors[field] || `${field} is invalid`;
+      if (!validateField(field, formValues[field])) {
+        isValid = false;
+        newErrors[field] = errors[field] || `This field is required`;
       }
     });
     
     setTouched(newTouched);
-    setErrors(newErrors);
+    setErrors({...errors, ...newErrors});
     
-    return formIsValid;
+    return isValid;
   };
 
   // Handle form submission
   const handleSubmit = (e) => {
     e.preventDefault();
+    console.log('Form submitted, values:', formValues);
     
     if (validateForm()) {
-      onSubmit(values);
+      console.log('Form validation passed, submitting data');
+      // Pass a copy of the data to avoid reference issues
+      onSubmit({...formValues});
+    } else {
+      console.log('Form validation failed, not submitting');
     }
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4 p-4">
+    <form onSubmit={handleSubmit} className="p-4 space-y-4">
       <Input
         label="Name"
         name="name"
-        value={values.name}
+        value={formValues.name || ''}
         onChange={handleChange}
         onBlur={handleBlur}
         error={touched.name && errors.name}
@@ -149,7 +171,7 @@ const UserForm = ({
         label="Email"
         name="email"
         type="email"
-        value={values.email}
+        value={formValues.email || ''}
         onChange={handleChange}
         onBlur={handleBlur}
         disabled={isEdit}
@@ -161,16 +183,17 @@ const UserForm = ({
       <Input
         label="Phone"
         name="phone"
-        value={values.phone || ''}
+        value={formValues.phone || ''}
         onChange={handleChange}
         onBlur={handleBlur}
         error={touched.phone && errors.phone}
+        helperText="Optional"
       />
       
       <Select
         label="Role"
         name="role"
-        value={values.role}
+        value={formValues.role || ROLES.DRIVER}
         onChange={handleChange}
         onBlur={handleBlur}
         options={[

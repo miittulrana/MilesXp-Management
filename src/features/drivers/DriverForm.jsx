@@ -3,9 +3,12 @@ import PropTypes from 'prop-types';
 import Input from '../../components/common/Form/Input';
 import Button from '../../components/common/Button/Button';
 import { isValidEmail } from '../../lib/utils';
+import { useNavigate } from 'react-router-dom';
+import { ROUTES } from '../../lib/constants';
 
 /**
- * Driver form component for adding and editing driver information
+ * Driver form component for viewing and basic editing of driver information
+ * Note: Most editing functionality is redirected to the Users management
  */
 const DriverForm = ({
   initialValues = {},
@@ -13,8 +16,11 @@ const DriverForm = ({
   onCancel,
   isSubmitting = false,
   submitLabel = 'Save',
-  isEditMode = false
+  isEditMode = false,
+  readOnly = false
 }) => {
+  const navigate = useNavigate();
+  
   // Default values with fallbacks
   const defaultValues = {
     name: '',
@@ -39,6 +45,8 @@ const DriverForm = ({
 
   // Handle input change
   const handleChange = (e) => {
+    if (readOnly) return;
+    
     const { name, value } = e.target;
     setValues(prevValues => ({
       ...prevValues,
@@ -56,6 +64,8 @@ const DriverForm = ({
 
   // Handle input blur for validation
   const handleBlur = (e) => {
+    if (readOnly) return;
+    
     const { name } = e.target;
     setTouched(prevTouched => ({
       ...prevTouched,
@@ -141,8 +151,13 @@ const DriverForm = ({
     }
   };
 
+  // Redirect to user management for comprehensive editing
+  const handleRedirectToUserManagement = () => {
+    navigate(ROUTES.USERS);
+  };
+
   return (
-    <form onSubmit={handleSubmit} className="driver-form">
+    <form onSubmit={handleSubmit} className="driver-form p-4">
       <div className="grid grid-cols-1 gap-4">
         <Input
           label="Name"
@@ -152,6 +167,7 @@ const DriverForm = ({
           onBlur={handleBlur}
           error={touched.name && errors.name}
           required
+          readOnly={readOnly}
         />
 
         <Input
@@ -163,7 +179,7 @@ const DriverForm = ({
           onBlur={handleBlur}
           error={touched.email && errors.email}
           required={!isEditMode}
-          disabled={isEditMode}
+          disabled={isEditMode || readOnly}
           helperText={isEditMode ? "Email cannot be changed" : ""}
         />
 
@@ -175,27 +191,45 @@ const DriverForm = ({
           onBlur={handleBlur}
           error={touched.phone && errors.phone}
           placeholder="Optional"
+          readOnly={readOnly}
         />
+        
+        {readOnly && (
+          <div className="bg-surface-color p-3 mt-2 rounded border border-border-color text-sm text-gray-600">
+            <p className="font-medium mb-2">Editing Driver Information</p>
+            <p>Driver details are managed through the User Management section. This ensures consistent user information across the system.</p>
+            <Button 
+              variant="primary"
+              size="small"
+              className="mt-2"
+              onClick={handleRedirectToUserManagement}
+            >
+              Go to User Management
+            </Button>
+          </div>
+        )}
       </div>
 
-      <div className="flex justify-end gap-2 mt-4">
-        <Button
-          type="button"
-          variant="outline"
-          onClick={onCancel}
-          disabled={isSubmitting}
-        >
-          Cancel
-        </Button>
-        <Button
-          type="submit"
-          variant="primary"
-          loading={isSubmitting}
-          disabled={isSubmitting}
-        >
-          {submitLabel}
-        </Button>
-      </div>
+      {!readOnly && (
+        <div className="flex justify-end gap-2 mt-4">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onCancel}
+            disabled={isSubmitting}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            variant="primary"
+            loading={isSubmitting}
+            disabled={isSubmitting}
+          >
+            {submitLabel}
+          </Button>
+        </div>
+      )}
     </form>
   );
 };
@@ -206,11 +240,12 @@ DriverForm.propTypes = {
     email: PropTypes.string,
     phone: PropTypes.string
   }),
-  onSubmit: PropTypes.func.isRequired,
-  onCancel: PropTypes.func.isRequired,
+  onSubmit: PropTypes.func,
+  onCancel: PropTypes.func,
   isSubmitting: PropTypes.bool,
   submitLabel: PropTypes.string,
-  isEditMode: PropTypes.bool
+  isEditMode: PropTypes.bool,
+  readOnly: PropTypes.bool
 };
 
 export default DriverForm;
