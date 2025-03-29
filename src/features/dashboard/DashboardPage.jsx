@@ -1,162 +1,219 @@
-// src/features/dashboard/DashboardPage.jsx
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import Card from '../../components/common/Card/Card';
 import { CardBody, CardHeader } from '../../components/common/Card/Card';
 import Button from '../../components/common/Button/Button';
-import { ROUTES } from '../../lib/constants';
 import Loader from '../../components/common/Loader/Loader';
-import supabase from '../../lib/supabase';
+import { ROUTES, ROLES, DOCUMENT_STATUS, SERVICE_STATUS } from '../../lib/constants';
+import vehicleService from '../../features/vehicles/vehicleService';
+import driverService from '../../features/drivers/driverService';
+import documentService from '../../features/documents/documentService';
+import serviceService from '../../features/service/serviceService';
+import { formatDate, getDaysRemaining } from '../../lib/utils';
+import { useAuth } from '../../hooks/useAuth';
 
+/**
+ * Dashboard component showing overview of system data
+ */
 const DashboardPage = () => {
+  const { isAdmin } = useAuth();
+  
+  // State variables for dashboard data
+  const [statsLoading, setStatsLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [stats, setStats] = useState({
     totalVehicles: 0,
     availableVehicles: 0,
     assignedVehicles: 0,
     blockedVehicles: 0,
     maintenanceVehicles: 0,
-    totalDrivers: 0,
-    expiringDocuments: [],
-    serviceDue: []
+    totalDrivers: 0
   });
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  
+  // State for expiring documents
+  const [docsLoading, setDocsLoading] = useState(true);
+  const [documents, setDocuments] = useState([]);
+  
+  // State for service records
+  const [serviceLoading, setServiceLoading] = useState(true);
+  const [serviceRecords, setServiceRecords] = useState([]);
 
-  // Load dashboard stats
+  // Load all dashboard data
   useEffect(() => {
-    const fetchStats = async () => {
-      try {
-        setLoading(true);
-        
-        // Fetch vehicle stats
-        const { data: vehicles, error: vehiclesError } = await supabase
-          .from('vehicles')
-          .select('id, status');
-        
-        if (vehiclesError) {
-          console.error('Error fetching vehicles:', vehiclesError);
-          throw new Error('Failed to fetch vehicle information');
-        }
-        
-        // Fetch drivers
-        const { data: drivers, error: driversError } = await supabase
-          .from('users')
-          .select('id')
-          .eq('role', 'driver');
-        
-        if (driversError) {
-          console.error('Error fetching drivers:', driversError);
-          throw new Error('Failed to fetch driver information');
-        }
-        
-        // Fetch expiring documents (within next 30 days)
-        const thirtyDaysFromNow = new Date();
-        thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
-        
-        let documents = [];
-        try {
-          const { data: docsData, error: documentsError } = await supabase
-            .from('documents')
-            .select('id, name, entity_type, entity_id, expiry_date')
-            .lt('expiry_date', thirtyDaysFromNow.toISOString())
-            .gt('expiry_date', new Date().toISOString())
-            .order('expiry_date');
-            
-          if (!documentsError) {
-            documents = docsData || [];
-          } else {
-            console.error('Error fetching documents:', documentsError);
-          }
-        } catch (docErr) {
-          console.error('Exception fetching documents:', docErr);
-        }
-        
-        // Fetch service records due - handle separately to prevent dashboard failure
-        let serviceRecords = [];
-        try {
-          const { data: serviceData, error: serviceError } = await supabase
-            .from('service_records')
-            .select(`
-              id, 
-              vehicle_id,
-              current_km,
-              next_service_km,
-              vehicles(plate_number, model)
-            `)
-            .order('next_service_km');
-            
-          if (!serviceError && serviceData) {
-            // Filter records where service is due soon
-            serviceRecords = serviceData.filter(record => {
-              const kmRemaining = record.next_service_km - record.current_km;
-              return kmRemaining <= 200; 
-            });
-          }
-        } catch (serviceErr) {
-          console.error('Error fetching service records:', serviceErr);
-          // Continue with empty service records rather than failing the dashboard
-        }
-        
-        // Calculate vehicle stats
-        const vehicleStats = {
-          totalVehicles: vehicles.length,
-          availableVehicles: vehicles.filter(v => v.status === 'available').length,
-          assignedVehicles: vehicles.filter(v => v.status === 'assigned').length,
-          blockedVehicles: vehicles.filter(v => v.status === 'blocked').length,
-          maintenanceVehicles: vehicles.filter(v => v.status === 'maintenance').length
-        };
-        
-        // Update state with all stats
-        setStats({
-          ...vehicleStats,
-          totalDrivers: drivers.length,
-          expiringDocuments: documents,
-          serviceDue: serviceRecords
-        });
-        
-        setLoading(false);
-      } catch (err) {
-        console.error('Error loading dashboard stats:', err);
-        setError("Failed to load dashboard data.");
-        setLoading(false);
-      }
-    };
-    
-    fetchStats();
+    fetchDashboardData();
   }, []);
 
-  // Format date for display
-  const formatDate = (dateString) => {
+  // Fetch all dashboard data in parallel
+  const fetchDashboardData = async () => {
     try {
-      const date = new Date(dateString);
-      return date.toLocaleDateString('en-US', { 
-        year: 'numeric', 
-        month: 'short', 
-        day: 'numeric' 
+      // Start all data fetching in parallel
+      const vehiclesPromise = fetchVehicleStats();
+      const driversPromise = fetchDriverStats();
+      const documentsPromise = fetchDocuments();
+      const servicePromise = fetchServiceRecords();
+      
+      // Wait for all data to be fetched
+      await Promise.all([vehiclesPromise, driversPromise, documentsPromise, servicePromise]);
+    } catch (err) {
+      console.error('Error fetching dashboard data:', err);
+      setError('Failed to load dashboard data. Please try again later.');
+    }
+  };
+
+  // Fetch vehicle statistics
+  const fetchVehicleStats = async () => {
+    try {
+      setStatsLoading(true);
+      const vehiclesData = await vehicleService.getVehicles();
+      
+      // Count vehicles by status
+      const counts = {
+        total: vehiclesData.length,
+        available: 0,
+        assigned: 0,
+        blocked: 0,
+        maintenance: 0
+      };
+      
+      // Count by status
+      vehiclesData.forEach(vehicle => {
+        const status = vehicle.status.toLowerCase();
+        if (counts.hasOwnProperty(status)) {
+          counts[status]++;
+        }
       });
-    } catch (e) {
-      return dateString || 'Unknown';
+      
+      // Update stats
+      setStats(prevStats => ({
+        ...prevStats,
+        totalVehicles: counts.total,
+        availableVehicles: counts.available,
+        assignedVehicles: counts.assigned,
+        blockedVehicles: counts.blocked,
+        maintenanceVehicles: counts.maintenance
+      }));
+    } catch (error) {
+      console.error('Error fetching vehicle stats:', error);
+      setError('Failed to load vehicle information');
+    } finally {
+      setStatsLoading(false);
+    }
+  };
+
+  // Fetch driver statistics (only users with driver role)
+  const fetchDriverStats = async () => {
+    try {
+      const driversData = await driverService.getDrivers();
+      
+      // Update stats with driver count
+      setStats(prevStats => ({
+        ...prevStats,
+        totalDrivers: driversData.length || 0
+      }));
+    } catch (error) {
+      console.error('Error fetching driver stats:', error);
+    }
+  };
+
+  // Fetch expiring documents
+  const fetchDocuments = async () => {
+    try {
+      setDocsLoading(true);
+      const allDocuments = await documentService.getDocuments();
+      
+      // Filter to only show documents with status expiring_soon or expired
+      const expiringDocs = allDocuments.filter(doc => 
+        doc.status === DOCUMENT_STATUS.EXPIRING_SOON || 
+        doc.status === DOCUMENT_STATUS.EXPIRED
+      );
+      
+      // Sort by expiry date (soonest first)
+      const sortedDocs = expiringDocs.sort((a, b) => {
+        return new Date(a.expiry_date) - new Date(b.expiry_date);
+      });
+      
+      setDocuments(sortedDocs);
+    } catch (error) {
+      console.error('Error fetching documents:', error);
+    } finally {
+      setDocsLoading(false);
+    }
+  };
+
+  // Fetch service records
+  const fetchServiceRecords = async () => {
+    try {
+      setServiceLoading(true);
+      const records = await serviceService.getServiceRecords();
+      
+      // Filter to only show records that are due_soon or overdue
+      const dueRecords = records.filter(record => 
+        record.status === SERVICE_STATUS.DUE_SOON || 
+        record.status === SERVICE_STATUS.OVERDUE
+      );
+      
+      // Sort by km remaining (least first)
+      const sortedRecords = dueRecords.sort((a, b) => {
+        return a.km_remaining - b.km_remaining;
+      });
+      
+      setServiceRecords(sortedRecords);
+    } catch (error) {
+      console.error('Error fetching service records:', error);
+    } finally {
+      setServiceLoading(false);
     }
   };
 
   // Calculate days until expiration
   const getDaysUntil = (dateString) => {
-    try {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const expiry = new Date(dateString);
-      const diffTime = expiry - today;
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      return diffDays;
-    } catch (e) {
-      return 0;
+    return getDaysRemaining(dateString);
+  };
+
+  // Render status badge with appropriate color
+  const renderStatusBadge = (status) => {
+    let className = "px-2 py-1 rounded-full text-xs font-medium";
+    
+    switch(status.toLowerCase()) {
+      case 'available':
+        className += " bg-green-100 text-green-800";
+        break;
+      case 'assigned':
+        className += " bg-blue-100 text-blue-800";
+        break;
+      case 'maintenance':
+        className += " bg-yellow-100 text-yellow-800";
+        break;
+      case 'blocked':
+        className += " bg-red-100 text-red-800";
+        break;
+      case 'expiring_soon':
+        className += " bg-yellow-100 text-yellow-800";
+        break;
+      case 'expired':
+        className += " bg-red-100 text-red-800";
+        break;
+      case 'due_soon':
+        className += " bg-yellow-100 text-yellow-800";
+        break;
+      case 'overdue':
+        className += " bg-red-100 text-red-800";
+        break;
+      default:
+        className += " bg-gray-100 text-gray-800";
     }
+    
+    return (
+      <span className={className}>
+        {status.replace('_', ' ')}
+      </span>
+    );
   };
 
   if (error) {
     return (
       <div className="dashboard-page p-6">
-        <div className="error-message bg-red-50 p-6 rounded-lg border border-red-200 text-center">
+        <div className="bg-red-50 p-6 rounded-lg border border-red-200 text-center">
           <h3 className="text-xl font-semibold text-red-600 mb-2">Error</h3>
           <p className="text-red-700">{error}</p>
           <Button 
@@ -175,111 +232,78 @@ const DashboardPage = () => {
     <div className="dashboard-page p-6">
       <h1 className="text-3xl font-bold text-primary mb-6">Dashboard</h1>
       
-      {loading ? (
-        <div className="dashboard-loading flex justify-center items-center min-h-[400px]">
+      {statsLoading ? (
+        <div className="flex justify-center items-center min-h-[400px]">
           <Loader size="large" text="Loading dashboard..." />
         </div>
       ) : (
         <>
           {/* Vehicle Stats Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-l-4 border-primary">
-              <CardBody>
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h3 className="text-lg font-semibold text-gray-700">Total Vehicles</h3>
-                    <div className="text-3xl font-bold text-primary mt-2">{stats.totalVehicles}</div>
-                  </div>
-                  <div className="bg-blue-100 p-3 rounded-full">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m-8 6H4m0 0l4 4m-4-4l4-4" />
-                    </svg>
-                  </div>
+            <Card className="bg-blue-50 border-l-4 border-primary">
+              <CardBody className="p-6">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-700">Total Vehicles</h3>
+                  <div className="text-3xl font-bold text-primary mt-2">{stats.totalVehicles}</div>
                 </div>
-                <div className="grid grid-cols-2 gap-2 mt-4 text-sm">
-                  <div className="text-green-600 bg-green-50 px-2 py-1 rounded">
-                    <span className="font-medium">{stats.availableVehicles}</span> Available
+                <div className="grid grid-cols-2 gap-2 mt-4 text-xs">
+                  <div className="text-green-600 bg-green-50 px-2 py-2 rounded text-center">
+                    <div className="font-medium text-base">{stats.availableVehicles}</div>
+                    <div>Available</div>
                   </div>
-                  <div className="text-blue-600 bg-blue-50 px-2 py-1 rounded">
-                    <span className="font-medium">{stats.assignedVehicles}</span> Assigned
+                  <div className="text-blue-600 bg-blue-50 px-2 py-2 rounded text-center">
+                    <div className="font-medium text-base">{stats.assignedVehicles}</div>
+                    <div>Assigned</div>
                   </div>
-                  <div className="text-orange-600 bg-orange-50 px-2 py-1 rounded">
-                    <span className="font-medium">{stats.maintenanceVehicles}</span> Maintenance
+                  <div className="text-orange-600 bg-orange-50 px-2 py-2 rounded text-center">
+                    <div className="font-medium text-base">{stats.maintenanceVehicles}</div>
+                    <div>Maintenance</div>
                   </div>
-                  <div className="text-red-600 bg-red-50 px-2 py-1 rounded">
-                    <span className="font-medium">{stats.blockedVehicles}</span> Blocked
+                  <div className="text-red-600 bg-red-50 px-2 py-2 rounded text-center">
+                    <div className="font-medium text-base">{stats.blockedVehicles}</div>
+                    <div>Blocked</div>
                   </div>
                 </div>
               </CardBody>
             </Card>
             
-            <Card className="bg-gradient-to-br from-green-50 to-green-100 border-l-4 border-green-500">
-              <CardBody>
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h3 className="text-lg font-semibold text-gray-700">Total Drivers</h3>
-                    <div className="text-3xl font-bold text-green-600 mt-2">{stats.totalDrivers}</div>
-                  </div>
-                  <div className="bg-green-100 p-3 rounded-full">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                    </svg>
-                  </div>
+            <Card className="bg-green-50 border-l-4 border-green-500">
+              <CardBody className="p-6">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-700">Total Drivers</h3>
+                  <div className="text-3xl font-bold text-green-600 mt-2">{stats.totalDrivers}</div>
                 </div>
-                <div className="mt-4">
-                  <Link to={ROUTES.DRIVERS} className="text-green-700 hover:text-green-900 font-medium flex items-center">
-                    View All Drivers
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                    </svg>
+                <div className="mt-6 text-center">
+                  <Link to={ROUTES.DRIVERS} className="text-green-700 hover:text-green-900 font-medium">
+                    View All Drivers →
                   </Link>
                 </div>
               </CardBody>
             </Card>
             
-            <Card className="bg-gradient-to-br from-amber-50 to-amber-100 border-l-4 border-amber-500">
-              <CardBody>
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h3 className="text-lg font-semibold text-gray-700">Expiring Documents</h3>
-                    <div className="text-3xl font-bold text-amber-600 mt-2">{stats.expiringDocuments.length}</div>
-                  </div>
-                  <div className="bg-amber-100 p-3 rounded-full">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                  </div>
+            <Card className="bg-amber-50 border-l-4 border-amber-500">
+              <CardBody className="p-6">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-700">Expiring Documents</h3>
+                  <div className="text-3xl font-bold text-amber-600 mt-2">{documents.length}</div>
                 </div>
-                <div className="mt-4">
-                  <Link to={ROUTES.DOCUMENTS} className="text-amber-700 hover:text-amber-900 font-medium flex items-center">
-                    View All Documents
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                    </svg>
+                <div className="mt-6 text-center">
+                  <Link to={ROUTES.DOCUMENTS} className="text-amber-700 hover:text-amber-900 font-medium">
+                    View All Documents →
                   </Link>
                 </div>
               </CardBody>
             </Card>
             
-            <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-l-4 border-purple-500">
-              <CardBody>
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h3 className="text-lg font-semibold text-gray-700">Service Due</h3>
-                    <div className="text-3xl font-bold text-purple-600 mt-2">{stats.serviceDue.length}</div>
-                  </div>
-                  <div className="bg-purple-100 p-3 rounded-full">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
-                    </svg>
-                  </div>
+            <Card className="bg-purple-50 border-l-4 border-purple-500">
+              <CardBody className="p-6">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-700">Service Due</h3>
+                  <div className="text-3xl font-bold text-purple-600 mt-2">{serviceRecords.length}</div>
                 </div>
-                <div className="mt-4">
-                  <Link to={ROUTES.SERVICE_DUES} className="text-purple-700 hover:text-purple-900 font-medium flex items-center">
-                    View Service Records
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                    </svg>
+                <div className="mt-6 text-center">
+                  <Link to={ROUTES.SERVICE_DUES} className="text-purple-700 hover:text-purple-900 font-medium">
+                    View Service Records →
                   </Link>
                 </div>
               </CardBody>
@@ -289,20 +313,22 @@ const DashboardPage = () => {
           {/* Expiring Documents Section */}
           <Card className="mb-8">
             <CardHeader>
-              <div className="flex justify-between items-center">
+              <div className="flex items-center w-full">
                 <h2 className="text-xl font-semibold">Expiring Documents</h2>
-                <Link to={ROUTES.DOCUMENTS} className="text-primary hover:text-primary-dark font-medium text-sm flex items-center">
-                  View All
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                  </svg>
+                <span className="flex-grow"></span>
+                <Link to={ROUTES.DOCUMENTS} className="text-primary hover:text-primary-dark font-medium text-sm">
+                  View All →
                 </Link>
               </div>
             </CardHeader>
             <CardBody>
-              {stats.expiringDocuments.length === 0 ? (
+              {docsLoading ? (
+                <div className="flex justify-center py-8">
+                  <Loader size="medium" text="Loading documents..." />
+                </div>
+              ) : documents.length === 0 ? (
                 <div className="text-center py-8 text-gray-500">
-                  No documents expiring within the next 30 days.
+                  No documents expiring soon.
                 </div>
               ) : (
                 <div className="overflow-x-auto">
@@ -311,26 +337,27 @@ const DashboardPage = () => {
                       <tr className="bg-gray-100 text-gray-700">
                         <th className="py-3 px-4 text-left">Document Name</th>
                         <th className="py-3 px-4 text-left">Type</th>
+                        <th className="py-3 px-4 text-left">Entity</th>
                         <th className="py-3 px-4 text-left">Expiry Date</th>
                         <th className="py-3 px-4 text-left">Expires In</th>
+                        <th className="py-3 px-4 text-left">Status</th>
                       </tr>
                     </thead>
                     <tbody className="text-gray-600">
-                      {stats.expiringDocuments.slice(0, 5).map((doc) => (
+                      {documents.slice(0, 5).map((doc) => (
                         <tr key={doc.id} className="border-b hover:bg-gray-50">
                           <td className="py-3 px-4">{doc.name}</td>
-                          <td className="py-3 px-4 capitalize">{doc.entity_type}</td>
+                          <td className="py-3 px-4">{doc.type}</td>
+                          <td className="py-3 px-4 capitalize">{doc.entity_type}: {doc.entity_name}</td>
                           <td className="py-3 px-4">{formatDate(doc.expiry_date)}</td>
                           <td className="py-3 px-4">
-                            <span className={`px-2 py-1 rounded text-xs font-medium ${
-                              getDaysUntil(doc.expiry_date) <= 7
-                                ? 'bg-red-100 text-red-700'
-                                : getDaysUntil(doc.expiry_date) <= 14
-                                ? 'bg-amber-100 text-amber-700'
-                                : 'bg-green-100 text-green-700'
-                            }`}>
-                              {getDaysUntil(doc.expiry_date)} days
-                            </span>
+                            {getDaysUntil(doc.expiry_date) < 0 
+                              ? <span className="text-red-600 font-medium">Expired</span>
+                              : `${getDaysUntil(doc.expiry_date)} days`
+                            }
+                          </td>
+                          <td className="py-3 px-4">
+                            {renderStatusBadge(doc.status)}
                           </td>
                         </tr>
                       ))}
@@ -344,18 +371,20 @@ const DashboardPage = () => {
           {/* Service Due Section */}
           <Card>
             <CardHeader>
-              <div className="flex justify-between items-center">
+              <div className="flex items-center w-full">
                 <h2 className="text-xl font-semibold">Upcoming Service Due</h2>
-                <Link to={ROUTES.SERVICE_DUES} className="text-primary hover:text-primary-dark font-medium text-sm flex items-center">
-                  View All
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                  </svg>
+                <span className="flex-grow"></span>
+                <Link to={ROUTES.SERVICE_DUES} className="text-primary hover:text-primary-dark font-medium text-sm">
+                  View All →
                 </Link>
               </div>
             </CardHeader>
             <CardBody>
-              {stats.serviceDue.length === 0 ? (
+              {serviceLoading ? (
+                <div className="flex justify-center py-8">
+                  <Loader size="medium" text="Loading service records..." />
+                </div>
+              ) : serviceRecords.length === 0 ? (
                 <div className="text-center py-8 text-gray-500">
                   No vehicles due for service soon.
                 </div>
@@ -368,24 +397,24 @@ const DashboardPage = () => {
                         <th className="py-3 px-4 text-left">Current KM</th>
                         <th className="py-3 px-4 text-left">Next Service KM</th>
                         <th className="py-3 px-4 text-left">KM Remaining</th>
+                        <th className="py-3 px-4 text-left">Service Date</th>
+                        <th className="py-3 px-4 text-left">Status</th>
                       </tr>
                     </thead>
                     <tbody className="text-gray-600">
-                      {stats.serviceDue.slice(0, 5).map((service) => (
+                      {serviceRecords.slice(0, 5).map((service) => (
                         <tr key={service.id} className="border-b hover:bg-gray-50">
-                          <td className="py-3 px-4">{service.vehicles ? `${service.vehicles.plate_number} (${service.vehicles.model})` : 'Unknown'}</td>
+                          <td className="py-3 px-4 font-medium">{service.vehicle_plate}</td>
                           <td className="py-3 px-4">{service.current_km.toLocaleString()}</td>
                           <td className="py-3 px-4">{service.next_service_km.toLocaleString()}</td>
                           <td className="py-3 px-4">
-                            <span className={`px-2 py-1 rounded text-xs font-medium ${
-                              service.next_service_km - service.current_km <= 0
-                                ? 'bg-red-100 text-red-700'
-                                : service.next_service_km - service.current_km <= 100
-                                ? 'bg-amber-100 text-amber-700'
-                                : 'bg-green-100 text-green-700'
-                            }`}>
-                              {(service.next_service_km - service.current_km).toLocaleString()} km
+                            <span className={`font-medium ${service.km_remaining <= 0 ? 'text-red-600' : 'text-amber-600'}`}>
+                              {service.km_remaining.toLocaleString()} km
                             </span>
+                          </td>
+                          <td className="py-3 px-4">{formatDate(service.service_date)}</td>
+                          <td className="py-3 px-4">
+                            {renderStatusBadge(service.status)}
                           </td>
                         </tr>
                       ))}
@@ -395,6 +424,8 @@ const DashboardPage = () => {
               )}
             </CardBody>
           </Card>
+          
+          {/* Removed admin actions section as requested */}
         </>
       )}
     </div>
