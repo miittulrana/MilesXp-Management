@@ -20,7 +20,8 @@ const UserForm = ({
     name: '',
     email: '',
     phone: '',
-    role: ROLES.DRIVER
+    role: ROLES.DRIVER,
+    password: ''
   };
   
   const [formValues, setFormValues] = useState({...defaultValues, ...initialValues});
@@ -104,6 +105,14 @@ const UserForm = ({
         }
         break;
         
+      case 'password':
+        if (!isEdit && (!value || value.trim() === '')) {
+          error = 'Password is required';
+        } else if (!isEdit && value.length < 6) {
+          error = 'Password must be at least 6 characters';
+        }
+        break;
+        
       default:
         break;
     }
@@ -120,7 +129,7 @@ const UserForm = ({
   // Validate the entire form
   const validateForm = () => {
     const fields = ['name', 'role'];
-    if (!isEdit) fields.push('email');
+    if (!isEdit) fields.push('email', 'password');
     
     let isValid = true;
     const newErrors = {};
@@ -203,6 +212,20 @@ const UserForm = ({
         error={touched.role && errors.role}
         required
       />
+
+      {/* Always show password field */}
+      <Input
+        label="Password"
+        name="password"
+        type="text" // Changed from password type to text type so it's visible
+        value={formValues.password || ''}
+        onChange={handleChange}
+        onBlur={handleBlur}
+        error={touched.password && errors.password}
+        helperText={isEdit ? "Current user password" : "Enter a password with at least 6 characters"}
+        required={!isEdit}
+        readOnly={isEdit} // Make it read-only in edit mode
+      />
       
       <div className="flex justify-end gap-2 mt-6">
         <Button
@@ -231,7 +254,8 @@ UserForm.propTypes = {
     name: PropTypes.string,
     email: PropTypes.string,
     phone: PropTypes.string,
-    role: PropTypes.string
+    role: PropTypes.string,
+    password: PropTypes.string
   }),
   onSubmit: PropTypes.func.isRequired,
   onCancel: PropTypes.func.isRequired,

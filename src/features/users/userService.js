@@ -105,67 +105,73 @@ const userService = {
         throw new Error(`Invalid role: ${userData.role}`);
       }
       
-      // Generate a secure password
+      // Get custom password or generate a secure password if not provided
       const password = userData.password || generatePassword(12);
-      console.log('Generated password (only logged for debugging)');
+      console.log('Using password for user creation');
       
       // Create auth user first
       console.log('Creating auth user...');
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: userData.email,
-        password: password,
-        options: {
-          data: {
-            name: userData.name,
-            role: userData.role
-          }
-        }
-      });
-      
-      if (authError) {
-        console.error('Error creating auth user:', authError);
-        throw new Error(authError.message || 'Failed to create user account');
-      }
-      
-      if (!authData?.user) {
-        console.error('Auth user creation failed - no user returned');
-        throw new Error('Auth user creation failed - no user returned');
-      }
-      
-      console.log('Auth user created successfully, ID:', authData.user.id);
-      
-      // Create user record in our database
-      console.log('Creating user record in database...');
-      const { data, error } = await supabase
-        .from('users')
-        .insert({
-          auth_id: authData.user.id,
-          name: userData.name,
+      try {
+        const { data: authData, error: authError } = await supabase.auth.signUp({
           email: userData.email,
-          phone: userData.phone || null,
-          role: userData.role
-        })
-        .select();
-      
-      if (error) {
-        console.error('Error creating user record:', error);
+          password: password,
+          options: {
+            data: {
+              name: userData.name,
+              role: userData.role
+            }
+          }
+        });
         
-        // Attempt to clean up auth user if user table insert fails
-        console.log('Attempting to clean up auth user after database insertion failure');
-        try {
-          await supabase.auth.admin.deleteUser(authData.user.id);
-          console.log('Auth user cleanup successful');
-        } catch (cleanupError) {
-          console.error('Error cleaning up auth user:', cleanupError);
+        if (authError) {
+          console.error('Error creating auth user:', authError);
+          throw new Error(authError.message || 'Failed to create user account');
         }
         
-        throw new Error(error.message || 'Failed to create user record');
+        if (!authData?.user) {
+          console.error('Auth user creation failed - no user returned');
+          throw new Error('Auth user creation failed - no user returned');
+        }
+        
+        console.log('Auth user created successfully, ID:', authData.user.id);
+        
+        // Create user record in our database
+        console.log('Creating user record in database...');
+        const { data, error } = await supabase
+          .from('users')
+          .insert({
+            auth_id: authData.user.id,
+            name: userData.name,
+            email: userData.email,
+            phone: userData.phone || null,
+            role: userData.role,
+            password: password // Store password directly in the user record
+          })
+          .select();
+        
+        if (error) {
+          console.error('Error creating user record:', error);
+          
+          // Attempt to clean up auth user if user table insert fails
+          console.log('Attempting to clean up auth user after database insertion failure');
+          try {
+            await supabase.auth.admin.deleteUser(authData.user.id);
+            console.log('Auth user cleanup successful');
+          } catch (cleanupError) {
+            console.error('Error cleaning up auth user:', cleanupError);
+          }
+          
+          throw new Error(error.message || 'Failed to create user record');
+        }
+        
+        console.log('User record created successfully, ID:', data[0]?.id);
+        
+        // Return the created user with the password for displaying to admin
+        return { ...data[0], password };
+      } catch (signUpError) {
+        console.error('Error during auth sign up:', signUpError);
+        throw signUpError;
       }
-      
-      console.log('User record created successfully, ID:', data[0]?.id);
-      
-      // Return the created user with the generated password for displaying to admin
-      return { ...data[0], password };
     } catch (error) {
       console.error('Exception in addUser:', error);
       throw error;
@@ -279,81 +285,6 @@ const userService = {
       return true;
     } catch (error) {
       console.error(`Exception in deleteUser:`, error);
-      throw error;
-    }
-  },
-
-  /**
-   * Reset user's password
-   * @param {string} id - User ID
-   * @returns {Promise<Object>} Result with new password
-   */
-  resetPassword: async (id) => {
-    try {
-      console.log('Resetting password for user ID:', id);
-      
-      // First get the auth_id and email
-      const { data: userData, error: fetchError } = await supabase
-        .from('users')
-        .select('auth_id, email, name')
-        .eq('id', id)
-        .single();
-      
-      if (fetchError) {
-        console.error('Error fetching user auth_id:', fetchError);
-        throw new Error(fetchError.message || 'User not found');
-      }
-      
-      if (!userData?.auth_id) {
-        throw new Error('User auth_id not found');
-      }
-      
-      // Generate a new secure password
-      const newPassword = generatePassword(12);
-      
-      // Try to update the password directly
-      try {
-        // Try using admin API to set the password directly
-        const { error: updateError } = await supabase.auth.admin.updateUserById(
-          userData.auth_id,
-          { password: newPassword }
-        );
-        
-        if (updateError) {
-          throw updateError;
-        }
-        
-        console.log('Password reset successfully');
-        return { 
-          success: true, 
-          newPassword, 
-          userName: userData.name 
-        };
-      } catch (adminUpdateError) {
-        console.warn('Admin password reset failed, trying password recovery email:', adminUpdateError);
-        
-        // Fallback to password recovery email
-        const { error: recoveryError } = await supabase.auth.resetPasswordForEmail(
-          userData.email,
-          {
-            redirectTo: window.location.origin + '/reset-password'
-          }
-        );
-        
-        if (recoveryError) {
-          console.error('Password recovery email failed:', recoveryError);
-          throw new Error(recoveryError.message || 'Failed to reset password');
-        }
-        
-        return { 
-          success: true, 
-          message: 'Password reset email sent to user',
-          isEmail: true,
-          userName: userData.name 
-        };
-      }
-    } catch (error) {
-      console.error(`Exception in resetPassword:`, error);
       throw error;
     }
   }

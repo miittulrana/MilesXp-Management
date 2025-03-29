@@ -87,26 +87,41 @@ const UsersPage = () => {
       console.log('Starting user creation process...');
       
       // Validate required fields client-side before sending to API
-      if (!userData.name || !userData.email || !userData.role) {
+      if (!userData.name || !userData.email || !userData.role || !userData.password) {
         showError('Please fill in all required fields');
         setIsSubmitting(false);
         return;
       }
       
+      // Store the password before making the API call
+      const userPassword = userData.password;
+      
       // Add timestamp for debugging
       console.log(`${new Date().toISOString()} - Calling userService.addUser`);
-      const result = await userService.addUser(userData);
-      console.log('User creation successful:', result);
       
-      if (result && result.password) {
-        setNewPassword(result.password);
+      try {
+        const result = await userService.addUser(userData);
+        console.log('User creation successful:', result);
+        
+        // Display the password (use the stored password as a fallback)
+        setNewPassword(result.password || userPassword);
         setSelectedUser(result);
-        setIsPasswordModalOpen(true);
+        
+        // Hide the add modal first before showing the password modal
+        setIsAddModalOpen(false);
+        
+        // Show success message and refresh user list
+        showSuccess('User added successfully');
+        fetchUsers();
+        
+        // Show password modal after a short delay
+        setTimeout(() => {
+          setIsPasswordModalOpen(true);
+        }, 300);
+      } catch (serviceError) {
+        console.error('Service error adding user:', serviceError);
+        showError(serviceError.message || 'Failed to add user');
       }
-      
-      showSuccess('User added successfully');
-      setIsAddModalOpen(false);
-      fetchUsers();
     } catch (error) {
       console.error('Error adding user:', error);
       // More detailed error message
@@ -134,30 +149,6 @@ const UsersPage = () => {
       showError(error.message || 'Failed to update user');
     } finally {
       setIsSubmitting(false);
-    }
-  };
-
-  // Handle password reset
-  const handleResetPassword = async (userId) => {
-    try {
-      setLoading(true);
-      console.log('Resetting password for user ID:', userId);
-      
-      const result = await userService.resetPassword(userId);
-      
-      if (result.isEmail) {
-        showSuccess('Password reset email sent successfully');
-      } else if (result.newPassword) {
-        setNewPassword(result.newPassword);
-        const user = users.find(u => u.id === userId);
-        setSelectedUser(user);
-        setIsPasswordModalOpen(true);
-      }
-    } catch (error) {
-      console.error('Error resetting password:', error);
-      showError(error.message || 'Failed to reset password');
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -241,13 +232,6 @@ const UsersPage = () => {
           >
             Edit
           </Button>
-          <Button
-            variant="outline"
-            size="small"
-            onClick={() => handleResetPassword(user.id)}
-          >
-            Reset Password
-          </Button>
           {user.id !== userDetails?.id && (
             <Button
               variant="danger"
@@ -327,7 +311,7 @@ const UsersPage = () => {
       <Modal
         isOpen={isPasswordModalOpen}
         onClose={() => setIsPasswordModalOpen(false)}
-        title="New Password"
+        title="User Password"
       >
         <PasswordDisplay
           password={newPassword}
